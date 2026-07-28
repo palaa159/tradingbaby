@@ -1,391 +1,419 @@
-# TradingBaby — Requirement Specification
+# TradingBaby — สเปคความต้องการของระบบ
 
-> **One-liner:** A trading bot that is *born knowing nothing about trading*. It grows up by
-> browsing the internet, forming hypotheses, trying, failing, and learning — while its maker
-> watches its brain (a knowledge graph) grow in real time.
-
----
-
-## 1. Vision & Concept
-
-TradingBaby is **not** a strategy bot. It is an experiment in *machine upbringing*:
-
-- Each bot ("**baby**") starts with only basic instincts — it can read numbers and charts,
-  knows that profit is good and loss hurts, and knows how to search for information.
-  It has **zero trading knowledge**: no indicators, no strategies, no market beliefs.
-- The baby learns **autonomously and curiosity-driven**: it decides what to study next based
-  on what confuses it (e.g. "I lost money and don't understand why → go research that").
-- Everything the baby learns lives in an external, inspectable **knowledge graph** — the
-  baby's "brain". The **maker** (creator/observer) can watch the learning path, the links
-  between ideas, and how beliefs strengthen or get debunked over time.
-- **Multiple babies run from day one**, each with a different personality seed, growing in
-  different directions. The fun is comparing how they turn out.
-
-### Design principles (non-negotiable)
-
-1. **Blank slate, real growth.** No pre-seeded trading knowledge. If the baby "knows" RSI,
-   it must be because it read about RSI somewhere and there is a Source node to prove it.
-2. **Everything is traceable.** Every trade decision links back to the knowledge nodes that
-   justified it. Every node links back to its sources and to the experiences that shaped it.
-3. **Beliefs are never deleted.** Wrong beliefs get marked `debunked` with evidence, and
-   stay in the graph as history. The maker can see the whole intellectual journey.
-4. **The maker observes, never intervenes.** No editing the graph, no teaching, no
-   curriculum. The maker only watches (and controls safety guardrails + budgets).
-5. **Growth is continuous, not staged.** No discrete "life stages". Maturity is an emergent,
-   measurable score — not a gate the maker designs.
-6. **DNA: profit is food.** The baby's core drive is survival — realized profit is the only
-   food it can eat. Energy fuels thinking and learning; sustained losses mean hunger.
-   This is a *real mechanic*, not narrative flavor (see §3.4).
-7. **Trades are deterministic, always.** The LLM never places a trade "by feel". It
-   *authors* versioned, deterministic strategies; only the strategy engine executes them.
-   Same strategy version + same market data ⇒ same decisions, every time (see §6.2).
+> **สรุปสั้นๆ:** บอทเทรดที่ *เกิดมาแบบไม่รู้เรื่องการเทรดเลย* มันโตขึ้นด้วยการท่องเน็ต
+> ตั้งข้อสงสัย ลองผิดลองถูก แล้วเก็บบทเรียนเอง ส่วนคนสร้าง (maker) นั่งดู "สมอง" ของมัน
+> (แผนผังความรู้) ค่อยๆ โตขึ้นแบบสดๆ
 
 ---
 
-## 2. Actors
+## 1. ไอเดียหลัก
 
-| Actor | Description |
+TradingBaby **ไม่ใช่** บอทที่ใส่สูตรเทรดให้แล้วรันตาม แต่เป็นการทดลอง *เลี้ยงเด็กที่เป็นโปรแกรม*:
+
+- บอทแต่ละตัว (เรียกว่า "**ทารก**") เกิดมาพร้อมสัญชาตญาณพื้นฐานเท่านั้น —
+  อ่านตัวเลขกับกราฟได้ รู้ว่ากำไรคืออิ่ม ขาดทุนคือหิว และรู้วิธีค้นหาข้อมูล
+  แต่**ความรู้เรื่องเทรดเป็นศูนย์**: ไม่รู้จักอินดิเคเตอร์ ไม่รู้จักกลยุทธ์ ไม่มีความเชื่ออะไรเกี่ยวกับตลาดเลย
+- ทารกเรียนรู้**ด้วยตัวเองตามความอยากรู้**: มันเลือกเองว่าจะไปศึกษาอะไรต่อ
+  จากสิ่งที่มันงง (เช่น "ขาดทุนแล้วไม่เข้าใจว่าทำไม → ไปหาคำตอบเรื่องนั้น")
+- ทุกอย่างที่ทารกเรียนรู้ถูกเก็บใน**แผนผังความรู้** (knowledge graph — โครงข่ายโน้ตที่โยงถึงกัน
+  คล้ายสมอง) ที่คนสร้างเปิดดูได้ตลอด: เห็นเส้นทางการเรียน เห็นว่าความคิดไหนโยงกับอะไร
+  ความเชื่อไหนแข็งแรงขึ้น ความเชื่อไหนถูกพิสูจน์ว่าผิด
+- **มีทารกหลายตัวตั้งแต่วันแรก** แต่ละตัวนิสัยไม่เหมือนกัน โตไปคนละทาง —
+  ความสนุกคือได้เทียบกันว่าแต่ละตัวโตมาเป็นยังไง
+- **ทารกคุยกันได้** แลกเปลี่ยนความรู้ เล่าบทเรียน เถียงกัน —
+  ความรู้ที่หลายตัวเห็นตรงกันจะตกตะกอนเป็น**ความรู้ส่วนกลางของฝูง (hive mind)**
+  ที่ฉลาดกว่าทารกตัวไหนตัวเดียว
+
+### กฎเหล็กของการออกแบบ (ห้ามแหก)
+
+1. **เกิดมาว่างเปล่า โตเองจริงๆ** — ห้ามยัดความรู้เทรดให้ล่วงหน้า ถ้าทารก "รู้จัก RSI"
+   ต้องเป็นเพราะมันไปอ่านเจอมาเอง และต้องชี้ได้ว่าอ่านมาจากไหน
+2. **ทุกอย่างตรวจย้อนได้** — ทุกการตัดสินใจเทรดชี้กลับไปได้ว่าใช้ความรู้ก้อนไหนตัดสินใจ
+   และความรู้ทุกก้อนชี้กลับไปได้ว่ามาจากแหล่งไหนหรือประสบการณ์ครั้งไหน
+3. **ความเชื่อไม่มีวันถูกลบ** — ความเชื่อที่ผิดจะถูกติดป้ายว่า "พิสูจน์แล้วว่าผิด" พร้อมหลักฐาน
+   แล้วเก็บไว้เป็นประวัติ คนสร้างจะได้เห็นเส้นทางความคิดทั้งหมดของมัน
+4. **คนสร้างได้แค่ดู ห้ามยุ่ง** — ห้ามแก้แผนผังความรู้ ห้ามสอน ห้ามป้อนตำรา
+   คนสร้างทำได้แค่เฝ้าดู (กับตั้งค่ากติกาความปลอดภัยและงบ)
+5. **โตแบบต่อเนื่อง ไม่มีด่าน** — ไม่มีการแบ่ง "ช่วงวัย" ตายตัว ความเก่งเป็นสิ่งที่ค่อยๆ
+   งอกออกมาเองและวัดได้จากตัวเลข ไม่ใช่ด่านที่คนสร้างออกแบบไว้
+6. **DNA: กินกำไรเป็นอาหาร** — แรงขับพื้นฐานของทารกคือการเอาตัวรอด
+   กำไรที่ทำได้จริงคืออาหารอย่างเดียวที่มันกินได้ พลังงานเอาไว้ใช้คิดใช้เรียน
+   ขาดทุนติดๆ กันแปลว่าหิว — อันนี้เป็น*กลไกจริง* ไม่ใช่แค่เล่าให้น่ารัก (ดูข้อ 3.4)
+7. **การเทรดต้องทำซ้ำได้เสมอ** — ห้าม AI เทรด "ตามอารมณ์" เด็ดขาด
+   AI มีหน้าที่*เขียนสูตรเทรด*ที่ชัดเจนตายตัว แล้วให้เครื่องจักรอีกตัวเป็นคนรันสูตรนั้น
+   สูตรเดิม + ข้อมูลเดิม ต้องได้ผลเหมือนเดิมทุกครั้ง (ดูข้อ 6.2)
+
+---
+
+## 2. ใครทำอะไรในระบบ
+
+| ใคร | ทำอะไร |
 |---|---|
-| **Baby** (×N) | An autonomous LLM-driven agent with its own identity, personality seed, knowledge graph, diary, and paper portfolio. |
-| **Maker** | Human owner. Observes dashboards, sets guardrail/budget config, starts/stops babies. Cannot edit knowledge. |
-| **Scheduler** | System component that wakes babies up for their activity cycles. |
+| **ทารก** (หลายตัว) | ตัวละคร AI ที่มีตัวตน นิสัย แผนผังความรู้ ไดอารี่ และพอร์ตทดลองของตัวเอง |
+| **คนสร้าง (maker)** | เจ้าของระบบ เฝ้าดูผ่านหน้าจอ ตั้งค่ากติกา/งบ กดเปิด-ปิดทารก แต่แก้ความรู้ไม่ได้ |
+| **ตัวจัดตารางเวลา** | ส่วนของระบบที่คอยปลุกทารกให้ตื่นมาทำกิจกรรมตามรอบ |
 
 ---
 
-## 3. The Baby
+## 3. ตัวทารก
 
-### 3.1 Innate abilities (and nothing more)
+### 3.1 ติดตัวมาแค่นี้ (ไม่มีมากกว่านี้)
 
-At birth a baby can:
-- Perceive market data (prices, candles, volume) as numbers/series.
-- Feel **hunger**: profit is food, loss is starvation — the primitive drive behind
-  everything it does (§3.4).
-- Search and read the internet; read news and social sentiment.
-- Write notes (create/update knowledge graph nodes) and write a diary.
-- Form hypotheses and ask the system to test them (backtest / paper trade).
+แรกเกิด ทารกทำได้แค่:
+- มองเห็นข้อมูลตลาด (ราคา แท่งเทียน ปริมาณซื้อขาย) เป็นตัวเลข
+- รู้สึก**หิว**: กำไรคืออาหาร ขาดทุนคืออด — นี่คือแรงขับเบื้องหลังทุกอย่างที่มันทำ (ข้อ 3.4)
+- ค้นเน็ต อ่านเว็บ อ่านข่าว ดูกระแสโซเชียลได้
+- จดโน้ต (สร้าง/แก้ความรู้ในแผนผังของตัวเอง) และเขียนไดอารี่ได้
+- ตั้งข้อสงสัยแล้วขอให้ระบบช่วยทดสอบได้ (ทดสอบกับข้อมูลย้อนหลัง / เทรดเงินปลอม)
 
-At birth a baby does **not** know: any indicator, any strategy, any market structure
-concept, or even that "buy low sell high" is a thing. All of that must be acquired.
+แรกเกิด ทารก**ไม่รู้**: อินดิเคเตอร์ใดๆ กลยุทธ์ใดๆ โครงสร้างตลาดใดๆ
+กระทั่ง "ซื้อถูกขายแพง" ก็ยังไม่รู้ — ทุกอย่างต้องไปหาเอาเอง
 
-### 3.2 Personality & diary
+### 3.2 นิสัยและไดอารี่
 
-- Each baby has a **personality seed** (e.g. cautious vs. impulsive, skeptical vs.
-  trusting, risk appetite flavor) that colors its writing voice and curiosity choices.
-- After each activity cycle the baby writes a **diary entry** in first person, with
-  feelings ("today hurt — I sold in panic and it bounced back").
-- Emotions are **narrative only**: they appear in the diary and personality, but are NOT a
-  hidden state variable that mechanically alters trade sizing or decisions.
+- ทารกแต่ละตัวมี**เมล็ดนิสัย** (personality seed) ที่สุ่มตั้งแต่เกิด เช่น ขี้กลัว vs ใจร้อน,
+  ขี้สงสัย vs เชื่อคนง่าย — ส่งผลต่อสำนวนการเขียนและเรื่องที่มันเลือกไปศึกษา
+- จบแต่ละรอบกิจกรรม ทารกเขียน**ไดอารี่**เป็นภาษาตัวเอง มีความรู้สึกปนอยู่
+  ("วันนี้เจ็บ ขายตอนตกใจ แล้วราคาก็เด้งกลับ")
+- อารมณ์เป็นแค่*เรื่องเล่า*: โผล่ในไดอารี่และนิสัย แต่**ไม่ใช่**ตัวแปรลับที่ไปบิดขนาดไม้
+  หรือการตัดสินใจเทรดโดยตรง
 
-### 3.3 Growth model
+### 3.3 การเติบโต
 
-- **Continuous growth** — no life stages. Instead the system tracks a set of longitudinal
-  metrics (see §7) so the maker can watch maturity emerge.
-- Capabilities are the same from day one (learn / hypothesize / paper trade); what changes
-  is the quality of the knowledge behind them.
+- **โตแบบต่อเนื่อง** ไม่มีช่วงวัย — ระบบเก็บตัวเลขพัฒนาการระยะยาวไว้ (ข้อ 7)
+  ให้คนสร้างเห็นความเก่งค่อยๆ งอกเอง
+- ความสามารถเท่ากันตั้งแต่วันแรก (เรียน / ตั้งข้อสงสัย / เทรดเงินปลอม)
+  สิ่งที่ต่างคือ*คุณภาพความรู้*ที่อยู่เบื้องหลัง
 
-### 3.4 Metabolism — profit is food (the DNA)
+### 3.4 ระบบเผาผลาญ — กำไรคืออาหาร (DNA ของมัน)
 
-Each baby has an **energy meter**, the survival mechanic at the core of its DNA:
+ทารกทุกตัวมี**หลอดพลังงาน** ซึ่งเป็นหัวใจของ DNA:
 
-- **Eating:** realized P&L converts to energy. Profitable closed trades feed the baby;
-  losing trades drain it. (During paper trading, paper P&L feeds the meter — the
-  metabolism works identically in paper and real-money modes.)
-- **Burning:** every activity cycle costs energy — thinking, browsing, backtesting, and
-  daily reviews all consume it. A baby that earns nothing gradually runs down.
-- **Maternal milk:** a newborn starts with a finite **milk reserve** (config value) — a
-  grace period to learn before it must feed itself. When the milk runs out, trading
-  profit is the only food source.
-- **Hunger states:** `well-fed → hungry → starving → hibernation`. Hunger reduces the
-  energy available for optional cycles (a starving baby studies less and gets duller —
-  survival pressure is real). At zero energy the baby enters **hibernation**: frozen,
-  brain intact, visible in the nursery as hibernating. The maker may restart it
-  (a fresh milk reserve) or archive it.
-- **Optional darwinian mode** (config, off by default): hibernation is permanent —
-  death. With a multi-baby fleet this turns the nursery into natural selection.
-- The maker **cannot hand-feed** a running baby (observe-only holds); energy comes from
-  trading alone.
-- Hunger state is visible to the baby itself — expect it to show up in diaries and to
-  shape what it gets curious about.
+- **การกิน:** กำไร-ขาดทุนที่ปิดออเดอร์แล้วแปลงเป็นพลังงาน เทรดกำไร = ได้กิน
+  เทรดขาดทุน = พลังงานหด (ช่วงเทรดเงินปลอม ก็ใช้กำไรปลอมป้อนหลอดพลังงานแบบเดียวกัน —
+  กลไกทำงานเหมือนกันเป๊ะทั้งเงินปลอมและเงินจริง)
+- **การเผาผลาญ:** ทุกกิจกรรมกินพลังงาน — คิด ท่องเน็ต ทดสอบสูตร ทบทวนประจำวัน
+  ล้วนมีต้นทุน ทารกที่หาอะไรกินไม่ได้จะค่อยๆ โรยแรง
+- **นมแม่:** เกิดใหม่จะได้**นมแม่ตุนไว้ก้อนหนึ่ง** (ตั้งค่าได้) — เป็นช่วงเวลาปลอดภัย
+  ให้เรียนก่อนต้องหากินเอง นมหมดเมื่อไหร่ กำไรจากการเทรดคืออาหารทางเดียว
+- **ระดับความหิว:** `อิ่ม → หิว → ใกล้อดตาย → จำศีล` ยิ่งหิว พลังงานสำหรับกิจกรรมเสริม
+  ยิ่งน้อย (ทารกที่หิวจะได้เรียนน้อยลงและทื่อลง — แรงกดดันเอาตัวรอดเป็นของจริง)
+  พลังงานหมดเกลี้ยง = เข้าโหมด**จำศีล**: หยุดนิ่ง สมองยังอยู่ครบ โชว์ในหน้าเนอสเซอรี่ว่ากำลังจำศีล
+  คนสร้างเลือกได้ว่าจะปลุก (เติมนมก้อนใหม่) หรือเก็บเข้ากรุ
+- **โหมดคัดพันธุ์ (เลือกเปิดได้ ปิดเป็นค่าเริ่มต้น):** จำศีล = ตายถาวร —
+  พอมีทารกหลายตัว เนอสเซอรี่จะกลายเป็นสนามคัดเลือกโดยธรรมชาติ
+- คนสร้าง**ป้อนอาหารตรงๆ ไม่ได้** (กฎ "ได้แค่ดู" ยังศักดิ์สิทธิ์) — พลังงานมาจากการเทรดเท่านั้น
+- ทารกรู้ตัวเองว่าหิวแค่ไหน — คาดว่าจะเห็นมันบ่นในไดอารี่ และความหิวจะเปลี่ยนเรื่องที่มันอยากศึกษา
 
 ---
 
-## 4. Learning System
+## 4. ระบบการเรียนรู้
 
-### 4.1 Allowed knowledge sources
+### 4.1 แหล่งความรู้ที่ใช้ได้
 
-| Source | Description |
+| แหล่ง | คำอธิบาย |
 |---|---|
-| **Internet browsing** | Web search + page reading, chosen by the baby itself. |
-| **Own experience** | Every paper trade, win or loss, becomes learning material. |
-| **News & social sentiment** | Financial news feeds and social sentiment as both learning material and market context. |
+| **ท่องเน็ต** | ค้นเว็บ + อ่านหน้าเว็บ โดยทารกเลือกเองว่าอ่านอะไร |
+| **ประสบการณ์ตัวเอง** | ทุกการเทรด ไม่ว่ากำไรหรือขาดทุน คือบทเรียน |
+| **ข่าวและกระแสโซเชียล** | ข่าวการเงินและอารมณ์ตลาดจากโซเชียล ใช้ทั้งเป็นบทเรียนและบริบทของตลาด |
+| **เพื่อนทารก** | คุยกับทารกตัวอื่นในลานหมู่บ้าน (ข้อ 9) — เล่าบทเรียน แลกข้อสงสัย เถียงกัน สิ่งที่ได้ยินมาถือเป็นความรู้ "เพื่อนบอกมา" ที่ต้องพิสูจน์เองก่อนเชื่อจริง |
 
-Explicitly **out**: maker-provided books/curriculum (the maker never feeds content).
+ที่**ไม่มี**แน่ๆ: ตำราหรือหลักสูตรจากคนสร้าง (คนสร้างไม่ป้อนเนื้อหาใดๆ ทั้งสิ้น)
 
-### 4.2 Curiosity-driven direction
+### 4.2 อยากรู้อะไรก็ไปหาเอง
 
-- The baby maintains an internal **curiosity queue**: open questions generated from
-  confusion, losses, contradictions between sources, or gaps it notices in its graph.
-- Each learning cycle, the baby picks what to study **entirely on its own** from this
-  queue. The maker cannot inject topics.
+- ทารกมี**คิวคำถามคาใจ**ของตัวเอง: คำถามที่เกิดจากความงง ความเจ็บจากการขาดทุน
+  ข้อมูลสองแหล่งที่ขัดกัน หรือช่องโหว่ที่มันสังเกตเห็นในความรู้ตัวเอง
+- ทุกรอบการเรียน ทารก**เลือกเองล้วนๆ** ว่าจะหยิบคำถามไหนไปหาคำตอบ
+  คนสร้างยัดหัวข้อให้ไม่ได้
 
-### 4.3 Activity rhythm (cycle-based)
+### 4.3 จังหวะชีวิต (ทำงานเป็นรอบ)
 
-- Babies run in **discrete scheduled cycles**, not a continuous 24/7 loop:
-  - **Short cycles** through the day: glance at the market, maybe learn one thing, maybe
-    act on a tested hypothesis.
-  - **Daily review cycle**: reflect on the day, write the diary entry, update the graph,
-    generate new curiosity questions, run the self-quiz (see §7).
-- Cycle frequency per baby is config-driven so the fleet fits the LLM budget (§10).
+- ทารกทำงานเป็น**รอบตามตาราง** ไม่ใช่คิดตลอด 24 ชั่วโมง:
+  - **รอบสั้น** ระหว่างวัน: ชำเลืองดูตลาด อาจเรียนสักเรื่อง อาจลงมือตามสูตรที่ทดสอบแล้ว
+  - **รอบทบทวนประจำวัน**: ย้อนคิดถึงทั้งวัน เขียนไดอารี่ อัปเดตแผนผังความรู้
+    ตั้งคำถามคาใจอันใหม่ และทำแบบทดสอบตัวเอง (ข้อ 7)
+- ความถี่ของรอบตั้งค่าได้ต่อตัว เพื่อให้ทั้งฝูงอยู่ในงบ (ข้อ 10)
 
-### 4.4 Hypothesis loop (the heart of trial-and-error)
+### 4.4 วงจรลองผิดลองถูก (หัวใจของโปรเจกต์)
 
-1. **Form** — from reading or experience, the baby states a testable hypothesis
-   ("RSI < 30 on 4h candles is a good entry for majors").
-2. **Test** — backtest against historical data AND/OR forward-test via paper trades.
-3. **Record** — results are written to the Hypothesis node with an evolving
-   **confidence score** and links to the evidence (backtest runs, trade journals).
-4. **Adopt / Debunk** — high-confidence hypotheses graduate into **deterministic
-   strategies** (§6.2): the baby compiles them into executable rule code, which is the
-   only thing allowed to place trades. Falsified hypotheses are marked **`debunked`**
-   (never deleted) with the evidence attached, and the baby remembers *why* it was wrong.
+1. **ตั้งข้อสงสัย** — จากการอ่านหรือประสบการณ์ ทารกตั้งข้อสงสัยที่ทดสอบได้
+   ("ถ้า RSI ต่ำกว่า 30 บนกราฟ 4 ชั่วโมง น่าจะเป็นจังหวะซื้อเหรียญใหญ่")
+2. **ทดสอบ** — เอาไปทดสอบกับข้อมูลย้อนหลัง (backtest) และ/หรือลองจริงด้วยเงินปลอม
+3. **จดผล** — ผลถูกบันทึกไว้กับข้อสงสัยนั้น พร้อม**คะแนนความมั่นใจ**ที่ขยับขึ้นลงตามหลักฐาน
+   และลิงก์ไปหาหลักฐานทุกชิ้น (ผลทดสอบ บันทึกการเทรด)
+4. **รับเข้า / ตีตก** — ข้อสงสัยที่มั่นใจสูงจะถูกแปลงเป็น**สูตรเทรดตายตัว** (ข้อ 6.2):
+   ทารกเขียนมันออกมาเป็นกฎที่ชัดเจน ซึ่งเป็นสิ่งเดียวที่มีสิทธิ์ส่งคำสั่งเทรดได้
+   ส่วนข้อสงสัยที่พิสูจน์แล้วว่าผิดจะถูกติดป้าย **"พิสูจน์แล้วว่าผิด"** (ไม่ลบ) พร้อมหลักฐาน
+   และทารกจะจำได้ว่า*ทำไม*มันถึงผิด
 
 ---
 
-## 5. Knowledge Graph (the brain)
+## 5. แผนผังความรู้ (สมองของทารก)
 
-### 5.1 Storage
+### 5.1 การเก็บข้อมูล
 
-- **Graph database** (implementation may be a relational DB with node/edge tables — see
-  §11) owned by the system, one logical graph per baby.
-- Rendered in a **custom web UI** (§8). Obsidian compatibility is not required.
+- เก็บใน**ฐานข้อมูลแบบโครงข่าย** (จริงๆ ใช้ฐานข้อมูลธรรมดาที่มีตารางโน้ตกับตารางเส้นเชื่อมก็ได้ —
+  ดูข้อ 11) แยกหนึ่งสมองต่อหนึ่งทารก
+- แสดงผลผ่าน**หน้าเว็บที่สร้างเอง** (ข้อ 8) ไม่ต้องเปิดใน Obsidian ได้
 
-### 5.2 Node types (typed schema)
+### 5.2 ชนิดของโน้ต (แบ่งประเภทชัดเจน)
 
-| Type | Purpose | Key fields |
+| ชนิด | คืออะไร | ข้อมูลหลัก |
 |---|---|---|
-| `Concept` | A piece of understanding ("what is RSI") | title, body, confidence, status |
-| `Hypothesis` | A testable belief | statement, confidence, status (`untested` / `testing` / `adopted` / `debunked`), test results |
-| `Strategy` | Deterministic, versioned trading rules compiled from adopted hypotheses | rule code/spec, version, status (`active` / `retired`), backtest fingerprint, linked hypotheses |
-| `TradeJournal` | One paper trade | symbol, side, size, entry/exit, P&L, reasoning text, linked knowledge |
-| `Lesson` | A conclusion drawn from experience | body, source trades/events |
-| `Source` | Where knowledge came from | URL/reference, retrieved-at, summary |
-| `Question` | An open curiosity item | question text, priority, status |
-| `DiaryEntry` | Daily first-person reflection | body, mood, date |
+| `ความรู้` (Concept) | ความเข้าใจหนึ่งเรื่อง ("RSI คืออะไร") | หัวข้อ เนื้อหา ความมั่นใจ สถานะ |
+| `ข้อสงสัย` (Hypothesis) | ความเชื่อที่รอการทดสอบ | ข้อความ ความมั่นใจ สถานะ (`ยังไม่ทดสอบ` / `กำลังทดสอบ` / `รับเข้าแล้ว` / `พิสูจน์แล้วว่าผิด`) ผลทดสอบ |
+| `สูตรเทรด` (Strategy) | กฎเทรดตายตัว มีเวอร์ชัน แปลงมาจากข้อสงสัยที่ผ่านการทดสอบ | ตัวกฎ เวอร์ชัน สถานะ (`ใช้งาน` / `ปลด`) ลายนิ้วมือผลทดสอบ ลิงก์ไปข้อสงสัยต้นทาง |
+| `บันทึกเทรด` (TradeJournal) | การเทรดหนึ่งครั้ง | เหรียญ ซื้อ/ขาย ขนาด ราคาเข้า-ออก กำไร/ขาดทุน เหตุผล ความรู้ที่ใช้ |
+| `บทเรียน` (Lesson) | ข้อสรุปจากประสบการณ์ | เนื้อหา เทรด/เหตุการณ์ต้นเรื่อง |
+| `แหล่งอ้างอิง` (Source) | ความรู้นี้มาจากไหน | ลิงก์ วันที่อ่าน สรุปย่อ |
+| `คำถามคาใจ` (Question) | เรื่องที่ยังสงสัยอยู่ | ตัวคำถาม ความสำคัญ สถานะ |
+| `ไดอารี่` (DiaryEntry) | บันทึกประจำวันภาษาตัวเอง | เนื้อหา อารมณ์ วันที่ |
+| `บทสนทนา` (Conversation) | การคุยกับเพื่อนทารกหนึ่งครั้ง (ข้อ 9.2) | คู่สนทนา บทพูดเต็ม วันที่ สรุปสิ่งที่ได้ |
 
-Edges are typed too (e.g. `learned_from`, `supports`, `contradicts`, `debunked_by`,
-`compiled_into`, `decided_by`, `spawned_question`). All nodes/edges carry **timestamps**
-and belong to exactly one baby.
+เส้นเชื่อมระหว่างโน้ตก็แบ่งชนิดเหมือนกัน (เช่น `เรียนมาจาก`, `ได้ยินมาจาก`, `สนับสนุน`,
+`ขัดแย้งกับ`, `ถูกตีตกโดย`, `ถูกแปลงเป็นสูตร`, `ใช้ตัดสินใจ`, `ทำให้เกิดคำถาม`)
+โน้ตและเส้นเชื่อมทุกอันมี**เวลากำกับ** และเป็นของทารกตัวเดียวเท่านั้น
+(ยกเว้นชั้นความรู้ส่วนกลางของฝูง — ข้อ 9.3)
 
-### 5.3 Time-travel (first-class feature)
+### 5.3 ย้อนเวลาดูสมอง (ฟีเจอร์ชูโรง)
 
-- Every node/edge mutation is recorded as an **append-only event log**.
-- The UI provides a **timeline slider**: pick any moment and see the graph exactly as the
-  baby's brain was at that time; play the growth as an animation ("replay the childhood").
+- ทุกการเปลี่ยนแปลงในสมองถูกจดเป็น**สมุดบันทึกเหตุการณ์แบบเขียนต่อท้ายอย่างเดียว**
+  (จดทุกอย่าง ไม่มีแก้ทับ ไม่มีลบ)
+- หน้าเว็บมี**แถบเลื่อนเวลา**: เลือกช่วงเวลาไหนก็ได้ แล้วเห็นสมองของทารก ณ ตอนนั้นเป๊ะๆ
+  หรือกดเล่นเป็นหนังดู "วัยเด็ก" ของมันโตขึ้นเรื่อยๆ
 
-### 5.4 Belief lifecycle
+### 5.4 วงจรชีวิตของความเชื่อ
 
-- Beliefs are strengthened/weakened by evidence via confidence scores.
-- Falsified knowledge is **marked `debunked` + evidence, never deleted** — the graph is
-  also the baby's autobiography.
+- ความเชื่อแข็งแรงขึ้นหรืออ่อนลงตามหลักฐาน ผ่านคะแนนความมั่นใจ
+- ความรู้ที่ผิดถูก**ติดป้าย "พิสูจน์แล้วว่าผิด" + หลักฐาน ไม่มีวันถูกลบ** —
+  แผนผังความรู้จึงเป็นอัตชีวประวัติของทารกไปในตัว
 
 ---
 
-## 6. Trading
+## 6. การเทรด
 
-| Aspect | Decision |
+| เรื่อง | ตัดสินใจ |
 |---|---|
-| Market | **Crypto** (spot only) |
-| Execution | **Paper trading** in MVP-era, with an **exchange-agnostic execution interface** so a real-money adapter (e.g. Binance via ccxt) can be added later without refactoring |
-| Symbol universe | Maker-configured safe universe (e.g. top 20–50 by market cap); the baby freely chooses what to focus on **within** that universe |
-| Timeframe / style | **Discovered by the baby** through experimentation. Hard floor: no sub-minute/HFT behavior (LLM latency + cost make it meaningless) |
-| Market data | Free exchange data via **ccxt** (OHLCV, tickers). No paid data in v1 |
-| Decision trace | Every order records the strategy version that fired and **links to the graph nodes behind it** ("bought via Strategy #4 v2 ← Hypothesis #12 + Lesson from trade #105") |
+| ตลาด | **คริปโต** (ซื้อ-ขายปกติเท่านั้น ไม่มีการยืมเงินเทรด) |
+| การส่งคำสั่ง | **เทรดเงินปลอม** ในช่วงแรก แต่ออกแบบส่วนส่งคำสั่งให้เป็นปลั๊กถอดเปลี่ยนได้ เผื่อวันหน้าเสียบตัวต่อกับตลาดจริง (เช่น Binance) โดยไม่ต้องรื้อโครง |
+| เหรียญที่เทรดได้ | คนสร้างกำหนดรายชื่อปลอดภัยไว้ (เช่น 20–50 เหรียญใหญ่สุดตามมูลค่าตลาด) แล้วทารกเลือกเองอิสระ**ภายใน**รายชื่อนั้น |
+| สไตล์ / กรอบเวลา | **ให้ทารกค้นพบเอง**จากการทดลอง มีเพดานเดียว: ห้ามเทรดถี่ระดับวินาที (AI คิดไม่ทันและไม่มีประโยชน์) |
+| ข้อมูลตลาด | ข้อมูลฟรีจากตลาดผ่าน **ccxt** (ตัวช่วยดึงราคาจากตลาดคริปโตหลายเจ้า) ไม่จ่ายค่าข้อมูลในเวอร์ชันแรก |
+| ตรวจย้อนการตัดสินใจ | ทุกคำสั่งเทรดจดไว้ว่าสูตรไหนเวอร์ชันไหนเป็นคนยิง และ**ลิงก์ไปถึงความรู้เบื้องหลัง** ("ซื้อด้วยสูตร #4 เวอร์ชัน 2 ← มาจากข้อสงสัย #12 + บทเรียนจากเทรด #105") |
 
-### 6.1 Guardrails ("house rules")
+### 6.1 กติกาบ้าน (กฎที่พ่อแม่ตั้ง)
 
-- All guardrails are **maker-configurable settings** (not hard-coded), stored per baby or
-  fleet-wide. The baby can *see* the rules but can **never modify** them.
-- Default set (enabled out of the box, values adjustable):
-  - max position size (% of portfolio)
-  - max daily loss → auto-pause trading for the day
-  - spot only, no leverage/short
-  - maker kill switch (pause a baby or the whole fleet instantly)
-- Guardrails are enforced **during paper trading too**, so discipline is part of the
-  baby's upbringing, not bolted on later.
+- กติกาทั้งหมดเป็น**ค่าที่คนสร้างปรับได้** (ไม่ฝังตายในโค้ด) ตั้งแยกต่อตัวหรือตั้งรวมทั้งฝูงก็ได้
+  ทารก*มองเห็น*กติกา แต่**แก้ไม่ได้เด็ดขาด**
+- ชุดเริ่มต้น (เปิดมาพร้อมใช้ ปรับค่าได้):
+  - ขนาดไม้สูงสุดต่อครั้ง (% ของพอร์ต)
+  - ขาดทุนสูงสุดต่อวัน → ถึงเพดานแล้วหยุดเทรดอัตโนมัติทั้งวัน
+  - ซื้อ-ขายปกติเท่านั้น ห้ามยืมเงินเทรด ห้ามเก็งราคาลง
+  - ปุ่มหยุดฉุกเฉิน (หยุดทารกตัวเดียวหรือทั้งฝูงได้ทันที)
+- กติกาบังคับใช้**ตั้งแต่ช่วงเงินปลอม** — ให้วินัยติดตัวมาแต่เด็ก ไม่ใช่มาแปะทีหลัง
 
-### 6.2 Deterministic strategy engine (hard requirement)
+### 6.2 เครื่องรันสูตรเทรดแบบตายตัว (ข้อบังคับ ห้ามหย่อน)
 
-**Every trade must be deterministic and reproducible.** The division of labor is strict:
+**ทุกการเทรดต้องตายตัวและทำซ้ำได้** แบ่งหน้าที่เด็ดขาด:
 
-- **The LLM never places orders.** Its job is upstream: learn, hypothesize, and
-  **author strategies** — deterministic rule programs (e.g. a typed rule spec or sandboxed
-  pure function: inputs = market data + portfolio state, outputs = orders).
-- **The strategy engine is the only order source.** It evaluates active strategy versions
-  against market data on a fixed schedule with no LLM in the loop.
-- **Reproducibility contract:**
-  - Strategies are **immutable once activated** — a change means a new version.
-  - No randomness, no wall-clock reads, no external calls inside a strategy; every input
-    (candles, portfolio snapshot, config) is recorded per evaluation.
-  - **Replay:** the engine can re-run any strategy version over any recorded data window
-    and must byte-for-byte reproduce the original decisions — this powers honest
-    backtests, debugging, and the decision-trace UI.
-- **Where the baby's "judgment" lives:** in *which* strategies it writes, activates, and
-  retires (an LLM-side decision made during activity cycles) — never in per-trade
-  discretion. Activation/retirement events are logged like any other graph mutation.
+- **AI ห้ามส่งคำสั่งเทรดเอง** งานของ AI อยู่ต้นน้ำ: เรียนรู้ ตั้งข้อสงสัย และ
+  **เขียนสูตรเทรด** — ชุดกฎที่ชัดเจนตายตัว (รับข้อมูลตลาด + สถานะพอร์ตเข้าไป
+  ตอบออกมาว่าซื้อ/ขาย/เฉยๆ โดยไม่มีการเดาสุ่มปน)
+- **เครื่องรันสูตรเป็นผู้ส่งคำสั่งเจ้าเดียว** มันเอาสูตรที่เปิดใช้อยู่มารันกับข้อมูลตลาด
+  ตามตารางเวลาที่แน่นอน โดย**ไม่มี AI มาเกี่ยวตอนรัน**
+- **สัญญาว่าด้วยการทำซ้ำ:**
+  - สูตรที่เปิดใช้แล้ว**แก้ไม่ได้** — อยากเปลี่ยนต้องออกเวอร์ชันใหม่
+  - ในสูตรห้ามมีการสุ่ม ห้ามดูนาฬิกา ห้ามเรียกข้อมูลข้างนอก
+    และข้อมูลขาเข้าทุกอย่าง (แท่งเทียน สถานะพอร์ต ค่าตั้งต่างๆ) ถูกจดเก็บไว้ทุกรอบที่รัน
+  - **กดรันซ้ำได้:** เอาสูตรเวอร์ชันเดิมมารันกับข้อมูลช่วงเดิม
+    ต้องได้คำตอบตรงกับของจริงเป๊ะทุกตัวอักษร — อันนี้คือฐานของการทดสอบที่ซื่อสัตย์
+    การไล่หาบั๊ก และหน้าจอตรวจย้อนการตัดสินใจ
+- **แล้ว "วิจารณญาณ" ของทารกอยู่ตรงไหน?** อยู่ที่*การเลือก*ว่าจะเขียนสูตรไหน
+  เปิดใช้สูตรไหน ปลดสูตรไหน (เป็นการตัดสินใจฝั่ง AI ในรอบกิจกรรม) —
+  ไม่ใช่การตัดสินใจรายเทรด และทุกการเปิด/ปลดสูตรถูกจดลงสมุดเหตุการณ์เหมือนกันหมด
 
-### 6.3 Real-money mode (future, design-for-now)
+### 6.3 โหมดเงินจริง (อนาคต แต่ออกแบบเผื่อไว้เลย)
 
-- Two modes: **auto** (baby trades within guardrails) and **approval** (every order is
-  pushed to the maker for confirm/reject before execution).
-- Migration path: paper → approval-mode real money (small) → auto.
-- Not built in MVP; the execution interface and guardrail engine must make it possible.
-
----
-
-## 7. Measuring Growth ("is it getting smarter?")
-
-Two measurement tracks, both charted over time per baby:
-
-1. **Trading performance & survival** — P&L, win rate, Sharpe, max drawdown on the paper
-   portfolio (rolling windows, so early failures don't drown later progress), plus the
-   **energy curve**: how well the baby feeds itself over time (§3.4).
-2. **Auto-quiz** — the system periodically generates exam questions from *real current
-   market situations* (e.g. "here is yesterday's chart for X — what would you do and
-   why?"). Answers are scored (LLM-judged rubric) and stored, producing a longitudinal
-   "report card". Quizzes also snapshot which knowledge the baby cited — showing not just
-   *that* it improved, but *what knowledge* drove the improvement.
-
-Fleet view: side-by-side comparison of babies on both tracks.
+- มีสองโหมด: **อัตโนมัติ** (ทารกเทรดเองภายใต้กติกา) และ **ขออนุมัติ**
+  (ทุกคำสั่งเด้งแจ้งเตือนให้คนสร้างกดยืนยัน/ปัดตกก่อนส่งจริง)
+- เส้นทางที่วางไว้: เงินปลอม → เงินจริงก้อนเล็กแบบขออนุมัติ → อัตโนมัติ
+- ยังไม่ทำในเวอร์ชันแรก แต่ส่วนส่งคำสั่งและระบบกติกาต้องออกแบบให้รองรับได้
 
 ---
 
-## 8. Maker Dashboard (web app)
+## 7. วัดว่าฉลาดขึ้นจริงไหม
 
-The product is a **web app** with these views:
+วัดสองทาง เก็บเป็นกราฟระยะยาวต่อทารกแต่ละตัว:
 
-1. **Nursery (fleet overview)** — all babies: status, age, **energy/hunger state**,
-   portfolio value, latest diary snippet, growth sparklines. Compare babies side by side.
-2. **Brain view (per baby)** — interactive knowledge graph: color by node type, size/glow
-   by confidence, `debunked` visually distinct. Click a node for full content + history +
-   linked evidence. **Timeline slider / replay** (§5.3).
-3. **Diary** — chronological diary entries; the emotional narrative of growing up.
-4. **Trades & strategies** — paper trade blotter and the strategy roster (versions,
-   active/retired, backtest fingerprints); click any trade → the strategy version that
-   fired, its recorded inputs, a **replay** button, and the knowledge nodes behind it
-   (decision trace §6).
-5. **Report card** — quiz scores and performance metrics over time.
-6. **Settings (the only write surface)** — guardrail values, symbol universe, cycle
-   frequency/budget caps, baby lifecycle (create baby with personality seed, pause,
-   archive), kill switch.
+1. **ผลเทรดและการเอาตัวรอด** — กำไร/ขาดทุน อัตราชนะ ความคุ้มเสี่ยง จุดขาดทุนหนักสุด
+   ของพอร์ตเงินปลอม (ดูเป็นช่วงๆ เพื่อไม่ให้ความห่วยตอนเด็กกลบความเก่งตอนโต)
+   บวก**กราฟพลังงาน**: มันหาเลี้ยงตัวเองเก่งขึ้นแค่ไหน (ข้อ 3.4)
+2. **แบบทดสอบอัตโนมัติ** — ระบบสร้างข้อสอบจาก*สถานการณ์ตลาดจริงล่าสุด*เป็นระยะ
+   (เช่น "นี่กราฟเมื่อวานของเหรียญ X เธอจะทำยังไง เพราะอะไร") คำตอบถูกให้คะแนน
+   แล้วเก็บเป็น "สมุดพก" ระยะยาว ข้อสอบยังจดด้วยว่าทารกอ้างความรู้ก้อนไหนตอนตอบ —
+   เลยเห็นไม่ใช่แค่*ว่า*เก่งขึ้น แต่เห็นว่า*ความรู้ก้อนไหน*ทำให้เก่งขึ้น
 
-Maker interaction is **observe-only** everywhere except Settings.
+มุมมองรวมฝูง: เทียบทารกหลายตัวเคียงข้างกันได้ทั้งสองทาง
 
 ---
 
-## 9. Multi-Baby Architecture
+## 8. หน้าจอของคนสร้าง (เว็บแอป)
 
-- The system runs **N babies concurrently from day one** (default fleet: start with 2–3
-  within budget).
-- Per baby: isolated knowledge graph, diary, paper portfolio, personality seed, config.
-- Shared: market data feed, scheduler, execution engine, guardrail engine, dashboard.
-- Babies do **not** share knowledge with each other (isolated minds; comparing their
-  divergence is the point).
+ตัวโปรดักต์เป็น**เว็บแอป** มีหน้าจอดังนี้:
+
+1. **เนอสเซอรี่ (ภาพรวมทั้งฝูง)** — ทารกทุกตัว: สถานะ อายุ **ระดับพลังงาน/ความหิว**
+   มูลค่าพอร์ต ไดอารี่ล่าสุด กราฟจิ๋วแสดงพัฒนาการ เทียบหลายตัวเคียงข้างกันได้
+2. **หน้าสมอง (รายตัว)** — แผนผังความรู้แบบโต้ตอบได้: สีตามชนิดโน้ต
+   ขนาด/ความสว่างตามความมั่นใจ โน้ตที่ "พิสูจน์แล้วว่าผิด" เห็นชัดว่าต่างจากชาวบ้าน
+   คลิกโน้ตดูเนื้อหาเต็ม + ประวัติ + หลักฐานที่โยงถึง มี**แถบเลื่อนเวลา / ปุ่มเล่นย้อนหนัง** (ข้อ 5.3)
+3. **ไดอารี่** — บันทึกประจำวันเรียงตามเวลา อ่านชีวิตวัยเด็กของมันได้เป็นเรื่องเป็นราว
+4. **ลานหมู่บ้าน & Hive** — อ่านบทสนทนาระหว่างทารกย้อนหลัง และดูแผนผังความรู้ส่วนกลางของฝูง:
+   อะไรที่ฝูงเห็นพ้อง อะไรที่ยังเถียงกันอยู่ ใครยืนยันกี่ตัว (ข้อ 9)
+5. **เทรดและสูตร** — รายการเทรดเงินปลอม และชั้นวางสูตร (เวอร์ชัน เปิดใช้/ปลดแล้ว
+   ผลทดสอบ) คลิกเทรดไหนก็เห็นว่าสูตรเวอร์ชันไหนยิง ข้อมูลขาเข้าตอนนั้นคืออะไร
+   มีปุ่ม**รันซ้ำดู** และเห็นความรู้เบื้องหลังทั้งเส้น (ข้อ 6)
+6. **สมุดพก** — คะแนนสอบและตัวเลขผลงานตามเวลา
+7. **ตั้งค่า (ที่เดียวที่คนสร้างแตะได้)** — ค่ากติกา รายชื่อเหรียญ ความถี่รอบ/เพดานการใช้งาน
+   จัดการทารก (สร้างใหม่พร้อมสุ่มนิสัย พักงาน เก็บเข้ากรุ) ปุ่มหยุดฉุกเฉิน
+
+นอกหน้าตั้งค่าแล้ว คนสร้าง**ได้แค่ดู**ทุกหน้า
 
 ---
 
-## 10. Runtime & Budget
+## 9. หมู่บ้านทารก และ Hive Mind
 
-| Aspect | Decision |
+### 9.1 โครงสร้างพื้นฐาน
+
+- ระบบรัน**ทารกหลายตัวพร้อมกันตั้งแต่วันแรก** (เริ่มที่ 2–3 ตัวตามงบ)
+- ของส่วนตัวต่อตัว: แผนผังความรู้ ไดอารี่ พอร์ตเงินปลอม เมล็ดนิสัย ค่าตั้ง
+- ของใช้ร่วมกัน: ท่อข้อมูลตลาด ตัวจัดตาราง เครื่องรันสูตร ระบบกติกา หน้าจอ
+  และ**ลานหมู่บ้าน** (ที่คุยกัน)
+
+### 9.2 ลานหมู่บ้าน (ทารกคุยกัน)
+
+- มี**รอบสังสรรค์**ในตารางชีวิต: ทารกสองตัว (หรือทั้งวง) มาเจอกันในลานหมู่บ้าน
+  เล่าบทเรียน แลกข้อสงสัย อวดสูตรที่ทดสอบผ่าน หรือเถียงกันเรื่องที่เห็นไม่ตรงกัน
+- บทสนทนาทุกครั้ง**ถูกจดเก็บ** และคนสร้างเปิดอ่านได้ (สนุกไม่แพ้ไดอารี่)
+- สิ่งที่ได้ยินจากเพื่อน**ไม่กลายเป็นความเชื่อทันที**: มันเข้าสมองเป็นความรู้ชนิด
+  "เพื่อนบอกมา" ที่มีความมั่นใจเริ่มต้นต่ำ พร้อมเส้นเชื่อม `ได้ยินมาจาก` ชี้ไปที่เพื่อนตัวนั้น
+  — จะเอาไปแปลงเป็นสูตรเทรดได้ต้อง**พิสูจน์ด้วยตัวเองก่อน** (ผ่านวงจรข้อสงสัยตามข้อ 4.4)
+- นิสัยมีผล: ทารกขี้เชื่ออาจรับความรู้จากเพื่อนง่าย ทารกขี้สงสัยอาจต้องเห็นหลักฐานก่อน —
+  ดูได้ว่านิสัยไหนรอด (ป้องกันเชื่อตามๆ กันทั้งฝูงไปในตัว)
+- คุยกันก็**เผาผลาญพลังงาน**เหมือนกิจกรรมอื่น — การเข้าสังคมมีต้นทุน
+
+### 9.3 Hive Mind (ความรู้ส่วนกลางของฝูง)
+
+- นอกจากสมองรายตัว มี**แผนผังความรู้ส่วนกลาง**อีกชั้นหนึ่งที่*ตกตะกอนขึ้นเอง*จากทั้งฝูง:
+  - ความรู้/ข้อสงสัยที่**หลายตัวพิสูจน์ตรงกัน**ด้วยหลักฐานของใครของมัน
+    จะถูกยกขึ้นชั้น hive เป็น "ความรู้ที่ฝูงเห็นพ้อง" พร้อมนับว่ากี่ตัวยืนยัน
+  - เรื่องที่ทารก**เห็นไม่ตรงกัน**ก็โชว์ในชั้น hive เหมือนกัน เป็น "ข้อถกเถียงของฝูง"
+    พร้อมหลักฐานของแต่ละฝั่ง
+- ชั้น hive **ไม่ทับสมองใคร**: ทารกแต่ละตัวยังคิดเองเชื่อเอง ชั้น hive เป็นแค่กระจกรวม
+  ที่สะท้อนว่าฝูงรู้อะไรร่วมกันแล้วบ้าง — ทารกเปิดดู hive ได้ (เหมือนอ่านกระดานข่าวหมู่บ้าน)
+  แต่จะเชื่อหรือไม่เป็นเรื่องของแต่ละตัว
+- ทุกความรู้ในชั้น hive **ตรวจย้อนได้**เหมือนเดิม: ชี้กลับไปได้ว่ามาจากสมองตัวไหน
+  หลักฐานชิ้นไหน บทสนทนาครั้งไหน
+- คนสร้างมี**หน้าดู hive** แยกต่างหาก: เห็นความรู้ร่วมของฝูงโต เห็นข้อถกเถียงเดือดๆ
+  และเลื่อนเวลาย้อนดูได้เหมือนสมองรายตัว
+
+---
+
+## 10. การรันระบบและงบ
+
+| เรื่อง | ตัดสินใจ |
 |---|---|
-| Hosting | Small VPS / cloud instance, runs 24/7 |
-| LLM engine | **Claude Agent SDK authenticated with the maker's Claude subscription** (Pro/Max plan login) — no metered API billing. The engine must run within the subscription's rate/usage limits |
-| Cost envelope | Subscription fee + small VPS (~$50–150/month total). No per-token spend |
-| Usage tiering | Small/fast model (Haiku-class) for routine cycles (market glance, quick notes); large model (Sonnet/Opus-class) for deep work (daily review, hypothesis/strategy authoring, quiz answers) |
-| Usage control | Per-baby daily cycle caps in config; the scheduler spreads cycles across the day, backs off when subscription limits are hit, and logs skipped cycles ("baby had a quiet day"). The deterministic strategy engine (§6.2) keeps trading itself at **zero LLM cost** |
+| ที่รัน | เครื่องเซิร์ฟเวอร์เช่ารายเดือนตัวเล็กๆ (VPS) เปิดทิ้งไว้ 24 ชม. |
+| เครื่องยนต์ AI | **Claude Agent SDK ล็อกอินด้วยแพ็กเกจรายเดือน** (Pro/Max) — ไม่จ่ายแบบคิดตามปริมาณ ใช้ได้เท่าที่โควตาแพ็กเกจให้ |
+| กรอบค่าใช้จ่าย | ค่าแพ็กเกจ + ค่าเช่าเซิร์ฟเวอร์ (รวมราวๆ $50–150/เดือน) ไม่มีบิลบานปลาย |
+| การแบ่งใช้ | งานประจำเบาๆ (ชำเลืองตลาด จดโน้ตสั้น) ใช้รุ่นเล็กเร็ว (แนว Haiku) งานคิดหนัก (ทบทวนประจำวัน เขียนข้อสงสัย/สูตร ตอบข้อสอบ) ใช้รุ่นใหญ่ (แนว Sonnet/Opus) |
+| การคุมโควตา | ตั้งเพดานจำนวนรอบต่อตัวต่อวัน ตัวจัดตารางกระจายรอบทั้งวัน ถ้าชนโควตาแพ็กเกจก็ถอยรอเอง แล้วจดไว้ว่ารอบไหนโดนข้าม ("วันนี้หนูได้อยู่เงียบๆ") ส่วนเครื่องรันสูตร (ข้อ 6.2) เทรดได้โดย**ไม่กิน AI เลย** |
 
 ---
 
-## 11. Proposed Tech Stack
+## 11. เทคโนโลยีที่เสนอ
 
-*(Maker delegated the choice; this is the recommendation with reasoning.)*
+*(คนสร้างให้เสนอเอง — นี่คือข้อเสนอพร้อมเหตุผล)*
 
-- **Language: TypeScript end-to-end** — one language for agent engine, API, and web;
-  ccxt has a first-class JS build; the Claude Agent SDK is TypeScript-native.
-- **Agent brain: Claude Agent SDK on subscription auth** (decided, §10) — tool-use loops
-  for browsing, note-writing, hypothesis testing, and strategy authoring; custom tools
-  exposed to the agent: `market_data`, `graph_read/write`, `run_backtest`,
-  `author_strategy`, `diary_write`.
-- **Strategy engine: deterministic evaluator** for baby-authored strategies — a typed
-  rule spec (preferred) or sandboxed pure functions (e.g. isolated-vm) with recorded
-  inputs and replay support (§6.2). No LLM calls at evaluation time.
-- **Backend: Node.js worker + scheduler** (cron-style cycles per baby) + REST/WS API.
-- **Database: PostgreSQL** (or SQLite for the very first prototype) with `nodes`,
-  `edges`, and an append-only `events` table — this *is* the graph DB and gives
-  time-travel for free by replaying events. A dedicated graph DB (Neo4j) is not needed
-  at this scale.
-- **Web: Next.js + React**; graph rendering with a force-graph/WebGL library
-  (e.g. `react-force-graph` / sigma.js); charts for metrics.
-- **Market data & execution: ccxt** behind an internal `ExecutionEngine` interface with
-  `PaperExchange` (MVP) and later `LiveExchange` implementations.
-- **Deploy: Docker Compose on a small VPS.**
+- **ภาษา: TypeScript ทั้งระบบ** — ภาษาเดียวจบทั้งเครื่องยนต์ AI ตัวเซิร์ฟเวอร์ และหน้าเว็บ
+  (ccxt มีเวอร์ชัน JS และ Claude Agent SDK ก็เป็น TypeScript แต่กำเนิด)
+- **สมอง AI: Claude Agent SDK ล็อกอินแบบแพ็กเกจ** (ตัดสินใจแล้ว ข้อ 10) —
+  เครื่องมือที่เปิดให้ทารกใช้: `ดูข้อมูลตลาด`, `อ่าน/เขียนแผนผังความรู้`,
+  `ทดสอบกับข้อมูลย้อนหลัง`, `เขียนสูตรเทรด`, `เขียนไดอารี่`
+- **เครื่องรันสูตร: ตัวรันกฎแบบตายตัว** — สูตรเขียนเป็นภาษากฎอย่างง่ายที่ออกแบบเอง
+  (ปลอดภัย ตรวจง่าย รันซ้ำง่าย — ทางเลือกสำรอง: ฟังก์ชันในกล่องทราย) จดข้อมูลขาเข้าทุกรอบ
+  รองรับการกดรันซ้ำ (ข้อ 6.2) ตอนรันไม่เรียก AI เลย
+- **หลังบ้าน: Node.js** — ตัวทำงานเบื้องหลัง + ตัวจัดตาราง (ปลุกทารกตามรอบ) + ช่องคุยกับหน้าเว็บ
+- **ฐานข้อมูล: PostgreSQL** (หรือ SQLite ช่วงลองของ) มีตารางโน้ต ตารางเส้นเชื่อม
+  และตารางสมุดเหตุการณ์แบบเขียนต่อท้ายอย่างเดียว — เท่านี้ก็เป็นฐานข้อมูลโครงข่ายได้แล้ว
+  แถมได้ฟีเจอร์ย้อนเวลาฟรีๆ จากการเล่นสมุดเหตุการณ์ซ้ำ (ไม่จำเป็นต้องใช้ฐานข้อมูลกราฟเฉพาะทางอย่าง Neo4j ที่สเกลนี้)
+- **หน้าเว็บ: Next.js + React** วาดแผนผังด้วยไลบรารีแรงโน้มถ่วง
+  (เช่น react-force-graph / sigma.js) + กราฟเส้นสำหรับตัวเลขต่างๆ
+- **ข้อมูลตลาดและส่งคำสั่ง: ccxt** อยู่หลังปลั๊กกลาง `ExecutionEngine`
+  ที่มีตัวเสียบ `เงินปลอม` (เวอร์ชันแรก) และ `เงินจริง` (อนาคต)
+- **การติดตั้ง: Docker Compose บน VPS ตัวเล็ก**
 
-Alternative considered: Python engine (stronger backtest ecosystem) + TS frontend —
-rejected for v1 to keep one codebase; revisit if backtesting needs outgrow JS tooling.
+ทางเลือกที่คิดแล้วแต่ไม่เอา: เครื่องยนต์เป็น Python (เครื่องมือทดสอบย้อนหลังแน่นกว่า) +
+หน้าเว็บ TS — ไม่เอาในเวอร์ชันแรกเพื่อให้เหลือโค้ดชุดเดียว ค่อยกลับมาคิดใหม่ถ้างานทดสอบโตเกินมือ JS
 
 ---
 
-## 12. Phased Delivery
+## 12. แผนการสร้างเป็นช่วง
 
-### Phase 1 — "It's alive" (MVP)
+### ช่วงที่ 1 — "มันมีชีวิต!" (เวอร์ชันแรกสุด)
 
-**Goal: watch a baby learn and its brain grow. No trading yet.**
+**เป้า: ได้นั่งดูทารกเรียนหนังสือและสมองโต ยังไม่ต้องเทรด**
 
-- 1–3 babies with personality seeds, cycle scheduler, per-baby cycle caps
-  (Agent SDK + subscription auth from day one).
-- Learning loop: curiosity queue → internet browsing → typed nodes/edges into the graph.
-- Market perception (read-only ccxt data) so learning has real context.
-- Diary writing.
-- **Metabolism v1**: energy meter + milk reserve burning down with activity (no feeding
-  yet — trading arrives in Phase 2, so the milk clock creates urgency to learn).
-- Dashboard: nursery (with energy state), brain view with **live graph growth**,
-  timeline slider, diary view.
+- ทารก 1–3 ตัวพร้อมเมล็ดนิสัย ตัวจัดตารางรอบ เพดานรอบต่อตัว
+  (ใช้ Agent SDK + ล็อกอินแพ็กเกจตั้งแต่วันแรก)
+- วงจรเรียนรู้: คิวคำถามคาใจ → ท่องเน็ต → โน้ต/เส้นเชื่อมงอกในแผนผัง
+- มองเห็นตลาด (ดึงราคาผ่าน ccxt แบบอ่านอย่างเดียว) ให้การเรียนมีบริบทจริง
+- เขียนไดอารี่ได้
+- **ระบบเผาผลาญขั้นแรก**: หลอดพลังงาน + นมแม่ที่ร่อยหรอลงตามกิจกรรม
+  (ยังหากินไม่ได้ — การเทรดมาช่วงที่ 2 นาฬิกานมจึงเป็นตัวเร่งให้รีบเรียน)
+- หน้าจอ: เนอสเซอรี่ (เห็นระดับพลังงาน) หน้าสมองแบบ**เห็นโตสดๆ** แถบเลื่อนเวลา หน้าไดอารี่
 
-**MVP acceptance:** maker opens the dashboard, watches a baby's graph gain nodes and
-links in near-real-time as it studies, scrubs the timeline back to day 1, and reads the
-diary of a growing mind.
+**เกณฑ์ผ่าน:** คนสร้างเปิดหน้าจอ เห็นสมองทารกงอกโน้ตงอกเส้นเชื่อมแทบจะสดๆ ขณะมันอ่านหนังสือ
+เลื่อนเวลากลับไปดูวันแรกได้ และได้อ่านไดอารี่ของจิตใจดวงเล็กๆ ที่กำลังโต
 
-### Phase 2 — "First steps" (trial-and-error)
+### ช่วงที่ 2 — "หัดเดิน" (ลองผิดลองถูก)
 
-- Hypothesis loop with backtesting + confidence scores + debunk lifecycle.
-- **Deterministic strategy engine** (author → activate → evaluate → replay, §6.2).
-- Paper trading + guardrail engine + decision traces.
-- **Metabolism v2**: paper P&L feeds the energy meter; hunger states + hibernation live.
-- Trades & strategies view; auto-quiz + report card.
+- วงจรข้อสงสัย: ทดสอบย้อนหลัง + คะแนนความมั่นใจ + ป้าย "พิสูจน์แล้วว่าผิด"
+- **เครื่องรันสูตรตายตัว** (เขียน → เปิดใช้ → รัน → กดรันซ้ำดู, ข้อ 6.2)
+- เทรดเงินปลอม + ระบบกติกา + ตรวจย้อนการตัดสินใจ
+- **ระบบเผาผลาญขั้นสอง**: กำไรเงินปลอมป้อนหลอดพลังงาน ระดับความหิว + จำศีล ทำงานจริง
+- **ลานหมู่บ้านขั้นแรก**: รอบสังสรรค์ ทารกคุยกันได้ บทสนทนาถูกจดเก็บ
+  ความรู้ "เพื่อนบอกมา" เข้าสมองแบบความมั่นใจต่ำ
+- หน้าเทรดและสูตร แบบทดสอบอัตโนมัติ + สมุดพก
 
-### Phase 3 — "Growing up"
+### ช่วงที่ 3 — "โตเป็นหนุ่มสาว"
 
-- Fleet comparison analytics; richer sentiment/news ingestion.
-- Real-money adapter with approval mode + kill switch (small capital).
-- Product-hardening (auth, multi-user) **only if** the experiment deserves it.
+- **Hive Mind เต็มตัว**: ชั้นความรู้ส่วนกลางของฝูงตกตะกอนอัตโนมัติ
+  (เห็นพ้อง/ถกเถียง + นับตัวยืนยัน) พร้อมหน้าดู hive และเลื่อนเวลาย้อนดูได้
+- หน้าเทียบทั้งฝูงแบบละเอียด ท่อข่าว/กระแสโซเชียลที่อุดมขึ้น
+- ตัวเสียบเงินจริงพร้อมโหมดขออนุมัติ + ปุ่มหยุดฉุกเฉิน (เงินก้อนเล็ก)
+- แต่งตัวเป็นโปรดักต์ (ระบบสมาชิก หลายผู้ใช้) **ก็ต่อเมื่อ**การทดลองมันคุ้มที่จะไปต่อ
 
 ---
 
-## 13. Out of Scope (v1)
+## 13. นอกขอบเขต (เวอร์ชันแรก)
 
-- Real-money trading (designed-for, not built).
-- Leverage, shorting, derivatives.
-- Maker teaching/feeding content or editing the graph.
-- Baby-to-baby knowledge sharing.
-- HFT / sub-minute trading.
-- Paid market-data providers.
+- เทรดเงินจริง (ออกแบบเผื่อ แต่ยังไม่สร้าง)
+- การยืมเงินเทรด เก็งราคาลง สัญญาซื้อขายล่วงหน้า
+- คนสร้างสอน/ป้อนเนื้อหา/แก้แผนผังความรู้
+- ทารก*คัดลอก*สมองกันตรงๆ (แลกความรู้ได้ผ่านการคุยเท่านั้น — ข้อ 9.2)
+- เทรดถี่ระดับวินาที
+- ข้อมูลตลาดแบบเสียเงิน
 
-## 14. Open Questions (park for implementation)
+## 14. คำถามที่ยังเปิดอยู่ (เก็บไว้ตอบตอนลงมือสร้าง)
 
-1. Which news/sentiment sources are practical within a $0 data budget (RSS, public APIs)?
-2. Quiz scoring rubric details — self-judged vs. separate judge model call.
-3. Exact personality-seed dimensions and how strongly they should steer curiosity.
-4. Retention policy for the event log at scale (years of replay data).
-5. Metabolism tuning: P&L→energy conversion rate, cycle costs, milk reserve size, and
-   whether darwinian mode should ever be the default.
-6. Strategy authoring format: typed rule DSL (safer, easier to validate/replay) vs.
-   sandboxed TypeScript functions (more expressive) — lean DSL first.
+1. แหล่งข่าว/กระแสโซเชียลเจ้าไหนใช้ได้จริงแบบไม่เสียเงิน (RSS, API สาธารณะ)?
+2. เกณฑ์ให้คะแนนข้อสอบ — ให้ AI ตรวจตัวเอง หรือเรียกอีกตัวมาเป็นกรรมการ?
+3. เมล็ดนิสัยควรมีกี่มิติ อะไรบ้าง และควรดึงความอยากรู้ไปแรงแค่ไหน?
+4. สมุดเหตุการณ์โตขึ้นเรื่อยๆ หลายปีเข้า จะเก็บ/ย่อยังไง?
+5. จูนระบบเผาผลาญ: อัตราแปลงกำไร→พลังงาน ต้นทุนต่อรอบ ขนาดนมแม่
+   และโหมดคัดพันธุ์ควรเป็นค่าเริ่มต้นไหม?
+6. รูปแบบสูตรเทรด: ภาษากฎอย่างง่ายที่ออกแบบเอง (ปลอดภัย ตรวจง่าย — เอียงไปทางนี้)
+   หรือฟังก์ชัน TypeScript ในกล่องทราย (ยืดหยุ่นกว่า)?
+7. กติกาลานหมู่บ้าน: จับคู่คุยยังไง บ่อยแค่ไหน และเกณฑ์ยกความรู้ขึ้นชั้น hive
+   (ต้องกี่ตัวยืนยัน?) ควรตั้งตรงไหนถึงพอดี ไม่กลายเป็นเชื่อตามๆ กันทั้งฝูง?
