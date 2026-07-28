@@ -33,6 +33,12 @@ TradingBaby is **not** a strategy bot. It is an experiment in *machine upbringin
    curriculum. The maker only watches (and controls safety guardrails + budgets).
 5. **Growth is continuous, not staged.** No discrete "life stages". Maturity is an emergent,
    measurable score — not a gate the maker designs.
+6. **DNA: profit is food.** The baby's core drive is survival — realized profit is the only
+   food it can eat. Energy fuels thinking and learning; sustained losses mean hunger.
+   This is a *real mechanic*, not narrative flavor (see §3.4).
+7. **Trades are deterministic, always.** The LLM never places a trade "by feel". It
+   *authors* versioned, deterministic strategies; only the strategy engine executes them.
+   Same strategy version + same market data ⇒ same decisions, every time (see §6.2).
 
 ---
 
@@ -52,7 +58,8 @@ TradingBaby is **not** a strategy bot. It is an experiment in *machine upbringin
 
 At birth a baby can:
 - Perceive market data (prices, candles, volume) as numbers/series.
-- Feel a primitive reward signal: profit = good, loss = pain.
+- Feel **hunger**: profit is food, loss is starvation — the primitive drive behind
+  everything it does (§3.4).
 - Search and read the internet; read news and social sentiment.
 - Write notes (create/update knowledge graph nodes) and write a diary.
 - Form hypotheses and ask the system to test them (backtest / paper trade).
@@ -75,6 +82,30 @@ concept, or even that "buy low sell high" is a thing. All of that must be acquir
   metrics (see §7) so the maker can watch maturity emerge.
 - Capabilities are the same from day one (learn / hypothesize / paper trade); what changes
   is the quality of the knowledge behind them.
+
+### 3.4 Metabolism — profit is food (the DNA)
+
+Each baby has an **energy meter**, the survival mechanic at the core of its DNA:
+
+- **Eating:** realized P&L converts to energy. Profitable closed trades feed the baby;
+  losing trades drain it. (During paper trading, paper P&L feeds the meter — the
+  metabolism works identically in paper and real-money modes.)
+- **Burning:** every activity cycle costs energy — thinking, browsing, backtesting, and
+  daily reviews all consume it. A baby that earns nothing gradually runs down.
+- **Maternal milk:** a newborn starts with a finite **milk reserve** (config value) — a
+  grace period to learn before it must feed itself. When the milk runs out, trading
+  profit is the only food source.
+- **Hunger states:** `well-fed → hungry → starving → hibernation`. Hunger reduces the
+  energy available for optional cycles (a starving baby studies less and gets duller —
+  survival pressure is real). At zero energy the baby enters **hibernation**: frozen,
+  brain intact, visible in the nursery as hibernating. The maker may restart it
+  (a fresh milk reserve) or archive it.
+- **Optional darwinian mode** (config, off by default): hibernation is permanent —
+  death. With a multi-baby fleet this turns the nursery into natural selection.
+- The maker **cannot hand-feed** a running baby (observe-only holds); energy comes from
+  trading alone.
+- Hunger state is visible to the baby itself — expect it to show up in diaries and to
+  shape what it gets curious about.
 
 ---
 
@@ -113,9 +144,10 @@ Explicitly **out**: maker-provided books/curriculum (the maker never feeds conte
 2. **Test** — backtest against historical data AND/OR forward-test via paper trades.
 3. **Record** — results are written to the Hypothesis node with an evolving
    **confidence score** and links to the evidence (backtest runs, trade journals).
-4. **Adopt / Debunk** — high-confidence hypotheses become part of active decision-making;
-   falsified ones are marked **`debunked`** (never deleted) with the evidence attached,
-   and the baby remembers *why* it was wrong.
+4. **Adopt / Debunk** — high-confidence hypotheses graduate into **deterministic
+   strategies** (§6.2): the baby compiles them into executable rule code, which is the
+   only thing allowed to place trades. Falsified hypotheses are marked **`debunked`**
+   (never deleted) with the evidence attached, and the baby remembers *why* it was wrong.
 
 ---
 
@@ -133,6 +165,7 @@ Explicitly **out**: maker-provided books/curriculum (the maker never feeds conte
 |---|---|---|
 | `Concept` | A piece of understanding ("what is RSI") | title, body, confidence, status |
 | `Hypothesis` | A testable belief | statement, confidence, status (`untested` / `testing` / `adopted` / `debunked`), test results |
+| `Strategy` | Deterministic, versioned trading rules compiled from adopted hypotheses | rule code/spec, version, status (`active` / `retired`), backtest fingerprint, linked hypotheses |
 | `TradeJournal` | One paper trade | symbol, side, size, entry/exit, P&L, reasoning text, linked knowledge |
 | `Lesson` | A conclusion drawn from experience | body, source trades/events |
 | `Source` | Where knowledge came from | URL/reference, retrieved-at, summary |
@@ -140,8 +173,8 @@ Explicitly **out**: maker-provided books/curriculum (the maker never feeds conte
 | `DiaryEntry` | Daily first-person reflection | body, mood, date |
 
 Edges are typed too (e.g. `learned_from`, `supports`, `contradicts`, `debunked_by`,
-`decided_by`, `spawned_question`). All nodes/edges carry **timestamps** and belong to
-exactly one baby.
+`compiled_into`, `decided_by`, `spawned_question`). All nodes/edges carry **timestamps**
+and belong to exactly one baby.
 
 ### 5.3 Time-travel (first-class feature)
 
@@ -166,7 +199,7 @@ exactly one baby.
 | Symbol universe | Maker-configured safe universe (e.g. top 20–50 by market cap); the baby freely chooses what to focus on **within** that universe |
 | Timeframe / style | **Discovered by the baby** through experimentation. Hard floor: no sub-minute/HFT behavior (LLM latency + cost make it meaningless) |
 | Market data | Free exchange data via **ccxt** (OHLCV, tickers). No paid data in v1 |
-| Decision trace | Every order records the reasoning and **links to the graph nodes used** ("bought because Hypothesis #12 + Lesson from trade #105") |
+| Decision trace | Every order records the strategy version that fired and **links to the graph nodes behind it** ("bought via Strategy #4 v2 ← Hypothesis #12 + Lesson from trade #105") |
 
 ### 6.1 Guardrails ("house rules")
 
@@ -180,7 +213,27 @@ exactly one baby.
 - Guardrails are enforced **during paper trading too**, so discipline is part of the
   baby's upbringing, not bolted on later.
 
-### 6.2 Real-money mode (future, design-for-now)
+### 6.2 Deterministic strategy engine (hard requirement)
+
+**Every trade must be deterministic and reproducible.** The division of labor is strict:
+
+- **The LLM never places orders.** Its job is upstream: learn, hypothesize, and
+  **author strategies** — deterministic rule programs (e.g. a typed rule spec or sandboxed
+  pure function: inputs = market data + portfolio state, outputs = orders).
+- **The strategy engine is the only order source.** It evaluates active strategy versions
+  against market data on a fixed schedule with no LLM in the loop.
+- **Reproducibility contract:**
+  - Strategies are **immutable once activated** — a change means a new version.
+  - No randomness, no wall-clock reads, no external calls inside a strategy; every input
+    (candles, portfolio snapshot, config) is recorded per evaluation.
+  - **Replay:** the engine can re-run any strategy version over any recorded data window
+    and must byte-for-byte reproduce the original decisions — this powers honest
+    backtests, debugging, and the decision-trace UI.
+- **Where the baby's "judgment" lives:** in *which* strategies it writes, activates, and
+  retires (an LLM-side decision made during activity cycles) — never in per-trade
+  discretion. Activation/retirement events are logged like any other graph mutation.
+
+### 6.3 Real-money mode (future, design-for-now)
 
 - Two modes: **auto** (baby trades within guardrails) and **approval** (every order is
   pushed to the maker for confirm/reject before execution).
@@ -193,8 +246,9 @@ exactly one baby.
 
 Two measurement tracks, both charted over time per baby:
 
-1. **Trading performance** — P&L, win rate, Sharpe, max drawdown on the paper portfolio
-   (rolling windows, so early failures don't drown later progress).
+1. **Trading performance & survival** — P&L, win rate, Sharpe, max drawdown on the paper
+   portfolio (rolling windows, so early failures don't drown later progress), plus the
+   **energy curve**: how well the baby feeds itself over time (§3.4).
 2. **Auto-quiz** — the system periodically generates exam questions from *real current
    market situations* (e.g. "here is yesterday's chart for X — what would you do and
    why?"). Answers are scored (LLM-judged rubric) and stored, producing a longitudinal
@@ -209,14 +263,16 @@ Fleet view: side-by-side comparison of babies on both tracks.
 
 The product is a **web app** with these views:
 
-1. **Nursery (fleet overview)** — all babies: status, age, portfolio value, latest diary
-   snippet, growth sparklines. Compare babies side by side.
+1. **Nursery (fleet overview)** — all babies: status, age, **energy/hunger state**,
+   portfolio value, latest diary snippet, growth sparklines. Compare babies side by side.
 2. **Brain view (per baby)** — interactive knowledge graph: color by node type, size/glow
    by confidence, `debunked` visually distinct. Click a node for full content + history +
    linked evidence. **Timeline slider / replay** (§5.3).
 3. **Diary** — chronological diary entries; the emotional narrative of growing up.
-4. **Trades** — paper trade blotter; click any trade → full reasoning + the knowledge
-   nodes it used (decision trace §6).
+4. **Trades & strategies** — paper trade blotter and the strategy roster (versions,
+   active/retired, backtest fingerprints); click any trade → the strategy version that
+   fired, its recorded inputs, a **replay** button, and the knowledge nodes behind it
+   (decision trace §6).
 5. **Report card** — quiz scores and performance metrics over time.
 6. **Settings (the only write surface)** — guardrail values, symbol universe, cycle
    frequency/budget caps, baby lifecycle (create baby with personality seed, pause,
@@ -242,9 +298,10 @@ Maker interaction is **observe-only** everywhere except Settings.
 | Aspect | Decision |
 |---|---|
 | Hosting | Small VPS / cloud instance, runs 24/7 |
-| LLM budget | **~$50–150/month** for the whole fleet |
-| Model tiering | Small/fast model (e.g. Haiku-class) for routine cycles (market glance, quick notes); large model (Sonnet/Opus-class) for deep work (daily review, hypothesis formation, quiz answers) |
-| Budget control | Per-baby daily token/cost caps in config; scheduler skips optional cycles when the cap is hit and logs it ("baby had a quiet day") |
+| LLM engine | **Claude Agent SDK authenticated with the maker's Claude subscription** (Pro/Max plan login) — no metered API billing. The engine must run within the subscription's rate/usage limits |
+| Cost envelope | Subscription fee + small VPS (~$50–150/month total). No per-token spend |
+| Usage tiering | Small/fast model (Haiku-class) for routine cycles (market glance, quick notes); large model (Sonnet/Opus-class) for deep work (daily review, hypothesis/strategy authoring, quiz answers) |
+| Usage control | Per-baby daily cycle caps in config; the scheduler spreads cycles across the day, backs off when subscription limits are hit, and logs skipped cycles ("baby had a quiet day"). The deterministic strategy engine (§6.2) keeps trading itself at **zero LLM cost** |
 
 ---
 
@@ -254,8 +311,13 @@ Maker interaction is **observe-only** everywhere except Settings.
 
 - **Language: TypeScript end-to-end** — one language for agent engine, API, and web;
   ccxt has a first-class JS build; the Claude Agent SDK is TypeScript-native.
-- **Agent brain: Claude API via Agent SDK** — tool-use loops for browsing, note-writing,
-  hypothesis testing; model tiering per §10.
+- **Agent brain: Claude Agent SDK on subscription auth** (decided, §10) — tool-use loops
+  for browsing, note-writing, hypothesis testing, and strategy authoring; custom tools
+  exposed to the agent: `market_data`, `graph_read/write`, `run_backtest`,
+  `author_strategy`, `diary_write`.
+- **Strategy engine: deterministic evaluator** for baby-authored strategies — a typed
+  rule spec (preferred) or sandboxed pure functions (e.g. isolated-vm) with recorded
+  inputs and replay support (§6.2). No LLM calls at evaluation time.
 - **Backend: Node.js worker + scheduler** (cron-style cycles per baby) + REST/WS API.
 - **Database: PostgreSQL** (or SQLite for the very first prototype) with `nodes`,
   `edges`, and an append-only `events` table — this *is* the graph DB and gives
@@ -278,11 +340,15 @@ rejected for v1 to keep one codebase; revisit if backtesting needs outgrow JS to
 
 **Goal: watch a baby learn and its brain grow. No trading yet.**
 
-- 1–3 babies with personality seeds, cycle scheduler, budget caps.
+- 1–3 babies with personality seeds, cycle scheduler, per-baby cycle caps
+  (Agent SDK + subscription auth from day one).
 - Learning loop: curiosity queue → internet browsing → typed nodes/edges into the graph.
 - Market perception (read-only ccxt data) so learning has real context.
 - Diary writing.
-- Dashboard: nursery, brain view with **live graph growth**, timeline slider, diary view.
+- **Metabolism v1**: energy meter + milk reserve burning down with activity (no feeding
+  yet — trading arrives in Phase 2, so the milk clock creates urgency to learn).
+- Dashboard: nursery (with energy state), brain view with **live graph growth**,
+  timeline slider, diary view.
 
 **MVP acceptance:** maker opens the dashboard, watches a baby's graph gain nodes and
 links in near-real-time as it studies, scrubs the timeline back to day 1, and reads the
@@ -291,8 +357,10 @@ diary of a growing mind.
 ### Phase 2 — "First steps" (trial-and-error)
 
 - Hypothesis loop with backtesting + confidence scores + debunk lifecycle.
-- Paper trading engine + guardrail engine + decision traces.
-- Trades view; auto-quiz + report card.
+- **Deterministic strategy engine** (author → activate → evaluate → replay, §6.2).
+- Paper trading + guardrail engine + decision traces.
+- **Metabolism v2**: paper P&L feeds the energy meter; hunger states + hibernation live.
+- Trades & strategies view; auto-quiz + report card.
 
 ### Phase 3 — "Growing up"
 
@@ -317,3 +385,7 @@ diary of a growing mind.
 2. Quiz scoring rubric details — self-judged vs. separate judge model call.
 3. Exact personality-seed dimensions and how strongly they should steer curiosity.
 4. Retention policy for the event log at scale (years of replay data).
+5. Metabolism tuning: P&L→energy conversion rate, cycle costs, milk reserve size, and
+   whether darwinian mode should ever be the default.
+6. Strategy authoring format: typed rule DSL (safer, easier to validate/replay) vs.
+   sandboxed TypeScript functions (more expressive) — lean DSL first.
