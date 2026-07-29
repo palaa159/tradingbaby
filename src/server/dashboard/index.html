@@ -29,6 +29,18 @@
   .bar { height: 5px; background: #0d1117; border-radius: 3px; overflow: hidden; margin-bottom: 6px; }
   .bar i { display: block; height: 100%; background: var(--ok); }
   .stats { color: var(--dim); font-size: 11px; display: flex; gap: 10px; }
+  .alpha { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 12px; font-weight: 600; color: var(--dim); }
+  .alpha.win { color: var(--ok); } .alpha.lose { color: var(--bad); }
+  .alpha em { display: block; font-style: normal; font-weight: 400; font-size: 10px; color: var(--dim); margin-top: 2px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { text-align: left; color: var(--dim); font-weight: 500; padding: 6px 10px; border-bottom: 1px solid var(--line); font-size: 11px; }
+  td { padding: 7px 10px; border-bottom: 1px solid #1d232c; vertical-align: top; }
+  tr.sell td:nth-child(2) { color: var(--bad); } tr.buy td:nth-child(2) { color: var(--ok); }
+  .trades { overflow-y: auto; padding: 18px; }
+  .trades h3 { font-size: 13px; margin: 0 0 8px; color: var(--dim); font-weight: 500; }
+  .trades section { margin-bottom: 24px; }
+  .note { color: var(--warn); font-size: 11px; }
+  .why { color: var(--dim); font-size: 11px; }
   .pill { font-size: 10px; padding: 2px 7px; border-radius: 999px; background: #0d1117; color: var(--dim); }
   .pill.well_fed { color: var(--ok); } .pill.hungry { color: var(--warn); }
   .pill.starving, .pill.suspended { color: var(--bad); }
@@ -75,6 +87,7 @@
 <main>
   <nav>
     <button data-view="brain" class="on">สมอง</button>
+    <button data-view="trades">เทรดและสูตร</button>
     <button data-view="diary">ไดอารี่</button>
   </nav>
 
@@ -89,6 +102,7 @@
     </div>
   </section>
 
+  <section class="view trades" id="view-trades"></section>
   <section class="view diary" id="view-diary"></section>
 </main>
 
@@ -123,6 +137,10 @@ async function loadClassroom() {
       <div class="traits">${s.traits}</div>
       <div class="bar"><i style="width:${Math.min(100, s.energy / s.maxEnergy * 100)}%"></i></div>
       <div class="stats"><span>⚡ ${s.energy}</span><span>🧠 ${s.nodeCount}</span><span>🔗 ${s.edgeCount}</span></div>
+      ${s.alpha ? `<div class="alpha ${s.alpha.alphaPct > 0.5 ? 'win' : s.alpha.alphaPct < -0.5 ? 'lose' : ''}">
+        α ${s.alpha.alphaPct > 0 ? '+' : ''}${s.alpha.alphaPct.toFixed(2)}%
+        <em>เธอ ${s.alpha.studentReturnPct.toFixed(1)}% · ไม้บรรทัด ${s.alpha.benchmarkReturnPct.toFixed(1)}%</em>
+      </div>` : ''}
     </div>`).join('') : '<div class="empty">ยังไม่มีนักเรียน — รัน bun run cycle ก่อน</div>';
 
   document.querySelectorAll('.card').forEach(el =>
@@ -134,7 +152,7 @@ async function select(id) {
   current = id; selected = null; layout.clear(); atTime = Infinity;
   $('slider').value = 100;
   document.querySelectorAll('.card').forEach(el => el.classList.toggle('on', el.dataset.id === id));
-  await Promise.all([loadBrain(), loadDiary()]);
+  await Promise.all([loadBrain(), loadDiary(), loadTrades()]);
 }
 
 async function loadBrain() {
@@ -151,6 +169,39 @@ async function loadBrain() {
   $('when').innerHTML = live
     ? `<span class="live">● สด</span> · ${graph.total} events`
     : `${fmt(atTime)} · ${graph.shown}/${graph.total} events`;
+}
+
+async function loadTrades() {
+  const data = await (await fetch(`/api/trades?student=${encodeURIComponent(current)}`)).json();
+  const esc = (s) => String(s ?? '').replace(/</g, '&lt;');
+
+  const fills = data.fills.length ? `<table>
+    <tr><th>เวลา</th><th>ทำอะไร</th><th>เหรียญ</th><th>จำนวน</th><th>ราคา</th><th>เพราะอะไร · จากความรู้ไหน</th></tr>
+    ${data.fills.map(f => `<tr class="${f.side}">
+      <td>${fmt(f.at)}</td><td>${f.side === 'buy' ? 'ซื้อ' : 'ขาย'}</td><td>${esc(f.symbol)}</td>
+      <td>${f.quantity.toFixed(4)}</td><td>${f.price.toFixed(2)}</td>
+      <td><div class="why">${esc(f.reason)}</div>
+        ${f.strategy ? `<div class="why">สูตร ${esc(f.strategy.id)} (v${f.strategy.version}, ${f.strategy.status})</div>` : ''}
+        ${f.hypothesisIds.length ? `<div class="why">← ข้อสงสัย: ${f.hypothesisIds.map(esc).join(', ')}</div>` : ''}
+        ${f.guardrailNote ? `<div class="note">⚠ ${esc(f.guardrailNote)}</div>` : ''}</td>
+    </tr>`).join('')}</table>` : '<div class="empty">ยังไม่มีการเทรด</div>';
+
+  const blocked = data.blocked.length ? `<table>
+    <tr><th>เวลา</th><th>ทำอะไร</th><th>เหรียญ</th><th>กติกาที่ห้าม</th></tr>
+    ${data.blocked.map(b => `<tr><td>${fmt(b.at)}</td><td>${b.side === 'buy' ? 'ซื้อ' : 'ขาย'}</td>
+      <td>${esc(b.symbol)}</td><td class="note">${esc(b.reason)}</td></tr>`).join('')}</table>` : '';
+
+  const strategies = data.strategies.length ? `<table>
+    <tr><th>สูตร</th><th>เวอร์ชัน</th><th>สถานะ</th><th>ไม้</th><th>จากข้อสงสัย</th></tr>
+    ${data.strategies.map(s => `<tr><td>${esc(s.spec.name)}</td><td>v${s.version}</td>
+      <td>${s.status === 'active' ? 'ใช้งาน' : 'ปลดแล้ว'}</td><td>${s.spec.sizePct}%</td>
+      <td class="why">${s.fromHypothesisIds.map(esc).join(', ') || '—'}</td></tr>`).join('')}</table>`
+    : '<div class="empty">ยังไม่มีสูตร</div>';
+
+  $('view-trades').innerHTML =
+    `<section><h3>ชั้นวางสูตร</h3>${strategies}</section>` +
+    `<section><h3>การเทรด</h3>${fills}</section>` +
+    (blocked ? `<section><h3>คำสั่งที่กติกาบ้านห้ามไว้</h3>${blocked}</section>` : '');
 }
 
 async function loadDiary() {
@@ -300,7 +351,7 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
 setInterval(async () => {
   if (playing) return;
   await loadClassroom();
-  if (atTime === Infinity) { await loadBrain(); await loadDiary(); }
+  if (atTime === Infinity) { await loadBrain(); await loadDiary(); await loadTrades(); }
 }, 3000);
 
 loadClassroom();

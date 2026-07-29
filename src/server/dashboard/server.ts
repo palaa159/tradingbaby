@@ -12,8 +12,12 @@
 import { replay, type GraphEvent } from '../../core/eventLog.ts';
 import { hungerState } from '../../core/metabolism.ts';
 import { describePersonality } from '../../core/personality.ts';
+import { alphaReport } from '../../core/trading/benchmark.ts';
+import { portfolioValue } from '../../core/trading/portfolio.ts';
 import { DEFAULT_ACADEMY } from '../academyConfig.ts';
 import { openAcademyDb, SqliteEventStore, StudentStore } from '../db/sqliteStore.ts';
+import { StrategyStore } from '../db/strategyStore.ts';
+import { TradingStore } from '../db/tradingStore.ts';
 
 function arg(name: string): string | undefined {
   const prefix = `--${name}=`;
@@ -24,6 +28,8 @@ const config = DEFAULT_ACADEMY;
 const db = openAcademyDb(arg('db') ?? 'academy.db');
 const events = new SqliteEventStore(db);
 const students = new StudentStore(db);
+const strategies = new StrategyStore(db);
+const trading = new TradingStore(db);
 const port = Number(arg('port') ?? 4173);
 
 const html = await Bun.file(new URL('./index.html', import.meta.url)).text();
@@ -41,9 +47,16 @@ function timeBounds(log: readonly GraphEvent[]): { first: number; last: number }
 }
 
 function classroom() {
+  const prices = trading.lastPrices();
   return students.list().map((student) => {
     const log = events.read(student.id);
     const brain = replay(log);
+    const portfolio = trading.portfolio(student.id, config.metabolism.startingAllowance);
+    const value = portfolioValue(portfolio, prices);
+    const benchmark = trading.benchmark(student.id);
+    const alpha = benchmark
+      ? alphaReport(config.metabolism.startingAllowance, value, benchmark, prices)
+      : null;
     const diary = [...brain.nodes.values()]
       .filter((n) => n.kind === 'diary_entry')
       .sort((a, b) => b.createdAt - a.createdAt);
@@ -62,6 +75,14 @@ function classroom() {
       edgeCount: brain.edges.size,
       latestDiary: latest ? { title: latest.title, body: latest.body, at: latest.createdAt } : null,
       bounds: timeBounds(log),
+      portfolio: {
+        value,
+        realizedPnl: portfolio.realizedPnl,
+        holdings: portfolio.holdings.size,
+        fills: trading.fills(student.id).length,
+        blocked: trading.blocked(student.id).length,
+      },
+      alpha,
     };
   });
 }
@@ -92,6 +113,26 @@ const server = Bun.serve({
         bounds: timeBounds(log),
         total: log.length,
         shown: log.filter((e) => e.at <= at).length,
+      });
+    }
+
+    if (url.pathname === '/api/trades') {
+      const studentId = url.searchParams.get('student');
+      if (!studentId) return json({ error: 'student required' });
+      const fills = trading.fills(studentId).map((fill) => {
+        const trace = trading.trace(fill.id, strategies);
+        return {
+          ...fill,
+          strategy: trace?.strategy
+            ? { id: trace.strategy.id, version: trace.strategy.version, status: trace.strategy.status }
+            : null,
+          hypothesisIds: trace?.hypothesisIds ?? [],
+        };
+      });
+      return json({
+        fills,
+        blocked: trading.blocked(studentId),
+        strategies: strategies.all(studentId),
       });
     }
 

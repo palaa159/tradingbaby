@@ -10,6 +10,7 @@
 
 import type { Database } from 'bun:sqlite';
 
+import type { Benchmark } from '../../core/trading/benchmark.ts';
 import { replayFills, type Fill, type PortfolioState } from '../../core/trading/portfolio.ts';
 import type { StrategyStore } from './strategyStore.ts';
 import type { StrategyVersion } from '../../core/strategy/types.ts';
@@ -81,6 +82,25 @@ export function migrateTradingTables(db: Database): void {
     )
   `);
   db.run('CREATE INDEX IF NOT EXISTS blocked_student ON blocked_orders (student_id, id)');
+  // Last price the engine actually saw per symbol. Lets the dashboard value
+  // portfolios without a network call, and keeps valuation reproducible.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS price_marks (
+      symbol TEXT PRIMARY KEY,
+      at INTEGER NOT NULL,
+      price REAL NOT NULL
+    )
+  `);
+  db.run(`
+    CREATE TABLE IF NOT EXISTS benchmarks (
+      student_id TEXT NOT NULL,
+      symbol TEXT NOT NULL,
+      quantity REAL NOT NULL,
+      started_at INTEGER NOT NULL,
+      starting_cash REAL NOT NULL,
+      PRIMARY KEY (student_id, symbol)
+    )
+  `);
 }
 
 function toFill(row: FillRow): RecordedFill {
@@ -156,6 +176,51 @@ export class TradingStore {
   /** Portfolio is derived from fills, never stored separately. */
   portfolio(studentId: string, startingCash: number): PortfolioState {
     return replayFills(startingCash, this.fills(studentId));
+  }
+
+  /** Remember the last price the engine saw, so valuation needs no network. */
+  markPrices(prices: Record<string, number>, at: number): void {
+    for (const [symbol, price] of Object.entries(prices)) {
+      this.db.run(
+        `INSERT INTO price_marks (symbol, at, price) VALUES (?, ?, ?)
+         ON CONFLICT(symbol) DO UPDATE SET at = excluded.at, price = excluded.price`,
+        [symbol, at, price],
+      );
+    }
+  }
+
+  lastPrices(): Record<string, number> {
+    const rows = this.db
+      .query<{ symbol: string; price: number }, []>('SELECT symbol, price FROM price_marks')
+      .all();
+    return Object.fromEntries(rows.map((r) => [r.symbol, r.price]));
+  }
+
+  /** Open the benchmark once; later calls are no-ops so the ruler never moves. */
+  openBenchmarkOnce(studentId: string, benchmark: Benchmark): Benchmark {
+    const existing = this.benchmark(studentId);
+    if (existing) return existing;
+    for (const holding of benchmark.holdings) {
+      this.db.run(
+        'INSERT INTO benchmarks (student_id, symbol, quantity, started_at, starting_cash) VALUES (?, ?, ?, ?, ?)',
+        [studentId, holding.symbol, holding.quantity, benchmark.startedAt, benchmark.startingCash],
+      );
+    }
+    return benchmark;
+  }
+
+  benchmark(studentId: string): Benchmark | null {
+    const rows = this.db
+      .query<{ symbol: string; quantity: number; started_at: number; starting_cash: number }, [string]>(
+        'SELECT symbol, quantity, started_at, starting_cash FROM benchmarks WHERE student_id = ? ORDER BY symbol',
+      )
+      .all(studentId);
+    if (rows.length === 0) return null;
+    return {
+      startedAt: rows[0]?.started_at ?? 0,
+      startingCash: rows[0]?.starting_cash ?? 0,
+      holdings: rows.map((r) => ({ symbol: r.symbol, quantity: r.quantity })),
+    };
   }
 
   /** Walk one fill back to the strategy version and the beliefs behind it. */
