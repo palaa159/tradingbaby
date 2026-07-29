@@ -25,7 +25,8 @@ export type EdgeKind =
   | 'debunked_by' // ถูกตีตกโดย
   | 'compiled_into' // ถูกแปลงเป็นสูตร
   | 'decided_by' // ใช้ตัดสินใจ
-  | 'spawned_question'; // ทำให้เกิดคำถาม
+  | 'spawned_question' // ทำให้เกิดคำถาม
+  | 'answers'; // ตอบคำถามข้อนี้
 
 export type HypothesisStatus = 'untested' | 'testing' | 'adopted' | 'debunked';
 

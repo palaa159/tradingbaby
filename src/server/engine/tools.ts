@@ -41,6 +41,7 @@ const EDGE_KINDS = [
   'debunked_by',
   'compiled_into',
   'spawned_question',
+  'answers',
 ] as const;
 
 const STATUSES = ['untested', 'testing', 'adopted', 'debunked', 'answered'] as const;
@@ -176,7 +177,15 @@ export function createStudentTools(
       ),
       tool(
         'graph_link',
-        'เชื่อมโน้ตสองอันที่มีอยู่แล้วเข้าด้วยกัน',
+        `เชื่อมโน้ตสองอันที่มีอยู่แล้วเข้าด้วยกัน — ความรู้ที่ไม่ได้เชื่อมกับอะไรเลยคือกองโน้ต ไม่ใช่แผนผัง
+ใช้เมื่อไหร่:
+- answers: ความรู้ใหม่ตอบคำถามในคิวข้อไหน (from = concept, to = question) — **ใช้ทุกครั้งที่หาคำตอบได้**
+- supports: ความรู้อันนี้หนุนความรู้เดิมอันไหน
+- contradicts: ความรู้อันนี้ขัดกับความรู้เดิมอันไหน — ขัดกันไม่ใช่เรื่องแย่ แปลว่ามีอะไรให้ทดสอบ
+- learned_from: ความรู้มาจากแหล่งอ้างอิงไหน
+- heard_from: ได้ยินมาจากเพื่อนหรือห้องสมุด (ความมั่นใจต่ำ)
+- spawned_question: ความรู้อันนี้ทำให้เกิดคำถามใหม่ข้อไหน
+- debunked_by / compiled_into: ถูกตีตกโดยหลักฐานไหน / ถูกแปลงเป็นสูตรไหน`,
         {
           kind: z.enum(EDGE_KINDS),
           fromNodeId: z.string(),
