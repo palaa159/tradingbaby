@@ -108,11 +108,33 @@ its active strategies kept trading at zero AI cost, so good rules could feed it
 back to health. Without the floor, hunger would remove the very ability to fix
 the strategies causing the hunger — pressure with no exit is just a trap.
 
-## P5 — Benchmark bot + Alpha Score
+## P5 — Benchmark bot + Alpha Score (done)
 
-- [ ] Buy-and-hold benchmark over the same universe and window
-- [ ] Alpha Score = student return − benchmark return, per window
-- [ ] Leaderboard surfaced on the dashboard
+- [x] The benchmark student ("เด็กบ้านเรียน"): buys the universe in equal weights
+      on the first tick the student sees the market, pays the same fees, and never
+      thinks again. Opened once and never re-opened — the ruler must not move
+- [x] `alphaReport()`: student return minus benchmark return over the same window
+      and the same starting cash, with a verdict of ชนะ/แพ้/เสมอตลาด
+- [x] `price_marks` table — the engine records every price it saw, so the
+      dashboard values portfolios with no network call and valuation stays
+      reproducible offline
+- [x] Dashboard: Alpha Score on every classroom card (green above the market, red
+      below), plus a new **เทรดและสูตร** view with the strategy shelf, the fills,
+      and the orders the house rules refused
+
+**Measured** — 270 ticks across two symbols, seeded onto มะลิ's Phase 1 brain:
+
+| | |
+|---|---|
+| Fills | 21 (many clamped 40% → 20%) |
+| มะลิ's return | **+0.76%** |
+| Benchmark | **+25.14%** |
+| **Alpha** | **−24.38% → แพ้ตลาด** |
+
+She made money and still failed, which is the entire point of grading on alpha:
+a rising market pays everyone, and only the difference is hers. The dashboard
+shows the whole chain behind each fill — rule fired → strategy version → the
+hypothesis it was compiled from → the guardrail that resized it.
 
 ## P6 — School sessions
 

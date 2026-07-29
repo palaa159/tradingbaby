@@ -7,6 +7,7 @@
  * always decides the same way.
  */
 
+import { openBenchmark } from '../../core/trading/benchmark.ts';
 import { checkOrder, type GuardrailConfig } from '../../core/trading/guardrails.ts';
 import { portfolioValue, type PortfolioState } from '../../core/trading/portfolio.ts';
 import type { Candle, StrategyVersion } from '../../core/strategy/types.ts';
@@ -48,6 +49,14 @@ export function tick(
     const last = candles[candles.length - 1];
     if (last) prices[symbol] = last.close;
   }
+  trading.markPrices(prices, input.at);
+
+  // The benchmark starts the first time this student sees the market, on the
+  // same cash and the same day, so alpha compares like with like (spec §7).
+  trading.openBenchmarkOnce(
+    input.studentId,
+    openBenchmark(input.startingCash, prices, input.at, input.feeRate),
+  );
 
   let state: PortfolioState = trading.portfolio(input.studentId, input.startingCash);
 
