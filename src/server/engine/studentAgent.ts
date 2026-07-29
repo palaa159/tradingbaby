@@ -9,6 +9,7 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 import { burn, hungerState, type MetabolismConfig } from '../../core/metabolism.ts';
 import type { Student } from '../../core/types.ts';
 import type { EventStore } from '../../core/eventLog.ts';
+import type { StrategyStore } from '../db/strategyStore.ts';
 import { curiosityQueue, type GraphOpsContext } from './graphOps.ts';
 import { buildSystemPrompt, cyclePrompt, type CycleKind } from './prompts.ts';
 import { createStudentTools } from './tools.ts';
@@ -36,6 +37,8 @@ export interface RunCycleOptions {
   market: MarketDataProvider;
   metabolism: MetabolismConfig;
   models: CycleModels;
+  /** Present from Phase 2: lets the student author and activate strategies. */
+  strategies?: StrategyStore;
   maxTurns?: number;
   now?: () => number;
 }
@@ -50,7 +53,7 @@ export async function runCycle(kind: CycleKind, opts: RunCycleOptions): Promise<
     .slice(0, 5)
     .map((q) => q.title);
 
-  const tools = createStudentTools(ctx, opts.market);
+  const tools = createStudentTools(ctx, opts.market, opts.strategies);
   const model = kind === 'short' ? opts.models.short : opts.models.dailyReview;
 
   let summary = '';
@@ -76,6 +79,8 @@ export async function runCycle(kind: CycleKind, opts: RunCycleOptions): Promise<
         'mcp__academy__curiosity_queue',
         'mcp__academy__diary_write',
         'mcp__academy__market_glance',
+        'mcp__academy__test_strategy',
+        'mcp__academy__adopt_strategy',
       ],
     },
   });
