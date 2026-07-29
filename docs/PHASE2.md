@@ -136,10 +136,34 @@ a rising market pays everyone, and only the difference is hers. The dashboard
 shows the whole chain behind each fill — rule fired → strategy version → the
 hypothesis it was compiled from → the guardrail that resized it.
 
-## P6 — School sessions
+## P6 — School sessions (done)
 
-- [ ] Paired conversation cycles, transcripts stored as `conversation` nodes
-- [ ] Hearsay enters at low confidence with a `heard_from` edge; must be re-proven
+- [x] Round-robin pairing rather than random: over one rotation every student
+      meets every other exactly once, so no pair drifts into an echo chamber and
+      nobody is left out by luck. Deterministic per day, so the school replays
+- [x] A session is symmetric — both students speak from their own proven notes
+      and both decide what to take from the other, so one meeting moves knowledge
+      in both directions
+- [x] Hearsay lands as a low-confidence `concept` wired to the `conversation`
+      node with `heard_from`, its body prefixed "<ชื่อ>บอกมา — ยังไม่ได้พิสูจน์เอง"
+- [x] `HEARSAY_CEILING` caps belief-by-hearsay at 0.35, deliberately below what a
+      strategy needs, so hearing a claim can never shortcut proving it. Skeptical
+      students land lower still
+- [x] `bun run school -- --day=N` runs a full day of class
+
+**Measured** — a real session between มะลิ (20 days of notes) and ภูผา (empty brain):
+
+- มะลิ shared her own lesson: patterns need a confirming candle, volume, and trend context
+- ภูผา, brand new, **said so honestly** — "ยังไม่มีอะไรเลย... เพิ่งเริ่มเรียนไปจริงๆ" — rather
+  than inventing knowledge. The blank-slate rule held under social pressure
+- ภูผา recorded exactly one takeaway at confidence **0.267** (his skepticism 0.397
+  against the 0.35 cap), with a `heard_from` edge
+- มะลิ recorded **nothing** from ภูผา, correctly — he had nothing to give
+- Cost: $0.0757 per session
+
+The asymmetry is the interesting part: knowledge flowed from the experienced
+student to the new one, and arrived as something to prove rather than something
+to believe.
 
 ## P7 — Exams + report card
 
