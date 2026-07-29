@@ -36,11 +36,26 @@ scale and the event log is authoritative. Add them when query cost shows up.
 ### M4 — Market perception (read-only)
 - [x] Free Binance public REST provider behind `MarketDataProvider` interface
 - [ ] ccxt provider (swap-in) + resilience when the exchange geo-blocks
+      (this sandbox gets HTTP 451; students note the outage and study instead)
 
-### M5 — Dashboard
-- [ ] Classroom view: students, energy state, latest diary snippet
-- [ ] Brain view: live force-graph, node colors by type, confidence sizing
-- [ ] Timeline slider (event-log replay) + diary reader
+### M5 — Dashboard (done)
+- [x] Classroom view: students, energy bar, hunger pill, traits, node/edge counts
+- [x] Brain view: force-directed canvas graph, colour by node kind, radius by
+      confidence, `debunked` nodes dimmed with a red ring, click for full detail,
+      auto-fit so the whole brain stays framed as it grows
+- [x] Timeline slider replaying the event log, plus a play button that animates
+      the brain's growth from day one
+- [x] Diary reader
+- [x] Live: polls every 3s while parked at "now", so growth appears as it happens
+
+`bun run dashboard` → http://localhost:4173 (`--db`, `--port` to override).
+Read-only by design (spec §8) — no route mutates anything.
+
+**Stack note:** built on `Bun.serve` plus one self-contained HTML file instead of
+the Next.js/React stack sketched in spec §11. The job is "read SQLite, draw a
+graph"; Next.js would add a build step and a dependency tree for routing and
+components this page does not have. Zero runtime dependencies, no build step.
+Revisit if the dashboard grows real routing needs.
 
 ## Acceptance (spec §12)
 
