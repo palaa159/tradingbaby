@@ -47,6 +47,29 @@ function text(value: unknown) {
 }
 
 /**
+ * Never let a tool throw. An exception escaping a handler kills the in-process
+ * MCP bridge, and the student sees a raw "socket closed" it cannot act on —
+ * which is exactly what happened the first time a student tried to backtest
+ * against a geo-blocked exchange. Failures come back as readable outcomes so
+ * the student can record the obstacle and do something else instead.
+ */
+function safe<A>(name: string, handler: (args: A) => Promise<ReturnType<typeof text>>) {
+  return async (args: A) => {
+    try {
+      return await handler(args);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      return text({
+        ok: false,
+        tool: name,
+        error: reason,
+        hint: 'เครื่องมือนี้ใช้ไม่ได้ตอนนี้ — จดไว้เป็น lesson ว่าเจออะไร แล้วไปทำอย่างอื่นที่ทำได้',
+      });
+    }
+  };
+}
+
+/**
  * The spec is described loosely here and validated strictly in strategyTools —
  * one schema of record (spec §14.6), and validation errors come back as
  * feedback the student can act on rather than a tool-call rejection it cannot see.
@@ -179,7 +202,7 @@ export function createStudentTools(
         {
           symbol: z.string().optional().describe('เช่น BTC/USDT — ไม่ใส่ = ดูรายชื่อที่มี'),
         },
-        async (args) => {
+        safe('market_glance', async (args) => {
           if (!args.symbol) return text({ universe: market.universe() });
           const snap = await market.snapshot(args.symbol);
           return text({
@@ -188,7 +211,7 @@ export function createStudentTools(
             changePct24h: snap.changePct24h,
             last12h: snap.candles1h.slice(-12).map((c) => c.close),
           });
-        },
+        }),
       ),
       tool(
         'test_strategy',
@@ -202,7 +225,9 @@ export function createStudentTools(
             .optional()
             .describe('id ของข้อสงสัยที่สูตรนี้มาจาก — ใส่แล้วผลจะอัปเดตความมั่นใจให้เอง'),
         },
-        async (args) => text(await testStrategy(ctx, market, args.spec, args.hypothesisId)),
+        safe('test_strategy', async (args) =>
+          text(await testStrategy(ctx, market, args.spec, args.hypothesisId)),
+        ),
       ),
       tool(
         'adopt_strategy',
@@ -213,12 +238,12 @@ export function createStudentTools(
           spec: STRATEGY_SPEC_SHAPE,
           hypothesisId: z.string().optional().describe('id ของข้อสงสัยต้นทาง'),
         },
-        async (args) => {
+        safe('adopt_strategy', async (args) => {
           if (!strategies) {
             return text({ ok: false, errors: ['ยังเปิดใช้สูตรไม่ได้ในโหมดนี้ — ทดสอบได้อย่างเดียว'] });
           }
           return text(await adoptStrategy(ctx, market, strategies, args.spec, args.hypothesisId));
-        },
+        }),
       ),
     ],
   });

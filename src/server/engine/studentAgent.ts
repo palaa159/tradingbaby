@@ -10,6 +10,7 @@ import { burn, hungerState, type MetabolismConfig } from '../../core/metabolism.
 import type { Student } from '../../core/types.ts';
 import type { EventStore } from '../../core/eventLog.ts';
 import type { StrategyStore } from '../db/strategyStore.ts';
+import { readBrainState } from '../../core/brainState.ts';
 import { curiosityQueue, type GraphOpsContext } from './graphOps.ts';
 import { buildSystemPrompt, cyclePrompt, type CycleKind } from './prompts.ts';
 import { createStudentTools } from './tools.ts';
@@ -52,6 +53,7 @@ export async function runCycle(kind: CycleKind, opts: RunCycleOptions): Promise<
   const curiosity = curiosityQueue(ctx)
     .slice(0, 5)
     .map((q) => q.title);
+  const brain = readBrainState(opts.store, opts.student.id);
 
   const tools = createStudentTools(ctx, opts.market, opts.strategies);
   const model = kind === 'short' ? opts.models.short : opts.models.dailyReview;
@@ -62,7 +64,7 @@ export async function runCycle(kind: CycleKind, opts: RunCycleOptions): Promise<
   const run = query({
     prompt: cyclePrompt(kind),
     options: {
-      systemPrompt: buildSystemPrompt(opts.student, hunger, kind, curiosity),
+      systemPrompt: buildSystemPrompt(opts.student, hunger, kind, curiosity, brain),
       model,
       maxTurns: opts.maxTurns ?? (kind === 'short' ? 20 : 36),
       // 'default' + allowedTools: whitelisted tools run without prompting,
