@@ -10,7 +10,13 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 
 import { combineScores, scoreAction, bestAction } from '../../core/exam/exam.ts';
-import type { Action, ExamAnswer, ExamQuestion, GradedAnswer } from '../../core/exam/types.ts';
+import type {
+  Action,
+  ExamAnswer,
+  ExamQuestion,
+  Exposure,
+  GradedAnswer,
+} from '../../core/exam/types.ts';
 import { describePersonality } from '../../core/personality.ts';
 import type { Student } from '../../core/types.ts';
 import { effortFor } from './effort.ts';
@@ -63,7 +69,32 @@ function describeChart(question: ExamQuestion): string {
     `ช่วงที่เห็น: ${question.context.length} แท่ง — เริ่ม ${first.toFixed(2)} สูงสุด ${high.toFixed(2)} ต่ำสุด ${low.toFixed(2)}`,
     `24 แท่งหลังสุด: ${recent.map((c) => c.toFixed(1)).join(', ')}`,
     `ปริมาณซื้อขายเฉลี่ย: ${(question.context.reduce((s, c) => s + c.volume, 0) / question.context.length).toFixed(0)}`,
+    describePosition(question.holding),
   ].join('\n');
+}
+
+/**
+ * Where the student stands, and what each answer would do from there. The same
+ * word means three different bets depending on the starting position, so the
+ * question is not answerable without this.
+ */
+function describePosition(holding: Exposure): string {
+  if (holding === 'long') {
+    return (
+      'ตอนนี้เธอ**ถือเหรียญนี้อยู่ (เดิมพันว่าจะขึ้น)** — ' +
+      '"wait" = ถือต่อ · "sell" = ขายออกกลับมาถือเงินสด · "buy" = ซื้อเพิ่ม'
+    );
+  }
+  if (holding === 'short') {
+    return (
+      'ตอนนี้เธอ**เปิดฝั่งลงอยู่ (เดิมพันว่าจะลง)** ราคายิ่งลงเธอยิ่งได้ — ' +
+      '"wait" = ถือฝั่งลงต่อ · "buy" = ปิดฝั่งลงกลับมาถือเงินสด'
+    );
+  }
+  return (
+    'ตอนนี้เธอ**ถือเงินสด ไม่ได้เดิมพันฝั่งไหน** — ' +
+    '"wait" = อยู่เฉยๆ ต่อ · "buy" = เข้าซื้อเดิมพันว่าจะขึ้น · "sell" = เปิดฝั่งลงเดิมพันว่าจะลง'
+  );
 }
 
 export async function sitExam(
@@ -86,6 +117,14 @@ export async function sitExam(
 
 นี่คือข้อสอบของสถาบัน ตอบด้วยความรู้ที่เธอมีจริงเท่านั้น ห้ามแต่งความรู้ที่ไม่ได้จดไว้
 ถ้าความรู้ไม่พอจะตัดสิน ให้ตอบ "wait" แล้วบอกตรงๆ ว่ายังไม่รู้พอ — ตอบไม่รู้ดีกว่าเดา
+
+**สำคัญ: "wait" ไม่ใช่คำตอบปลอดภัยเสมอไป** ข้อสอบให้คะแนนจาก*สถานะที่เธอลงเอย* ไม่ใช่คำที่เธอพูด
+- ถือขาขึ้นอยู่แล้วตอบ wait = เธอเลือกถือต่อ ตลาดลงเธอก็เจ็บเต็มๆ
+- เปิดขาลงอยู่แล้วตอบ wait = เธอเลือกถือฝั่งลงต่อ ตลาดขึ้นเธอก็เจ็บเต็มๆ
+- ถือเงินสดแล้วตอบ wait = เธอเลือกอยู่นอกตลาด ตลาดวิ่งทางไหนเธอก็พลาดเต็มๆ
+อยู่เฉยๆ ก็เป็นการตัดสินใจอย่างหนึ่ง และถูกให้คะแนนเหมือนการตัดสินใจอื่น
+
+สถาบันนี้เล่นได้ทั้งสองฝั่ง ไม่ได้เชียร์ฝั่งไหน — เดาว่าลงแล้วลงจริง ก็ได้คะแนนเต็มเท่ากับเดาว่าขึ้นแล้วขึ้นจริง
 
 ตอบเป็น JSON อย่างเดียว:
 {"action":"buy"|"sell"|"wait","reasoning":"เหตุผล 2-4 บรรทัด","cited":["id ของโน้ตที่ใช้"]}`;

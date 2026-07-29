@@ -17,6 +17,7 @@
  * (spec §9.3, and the "ทำการบ้านเอง" rule from §9.2).
  */
 
+import { directionOf } from '../strategy/types.ts';
 import type { Condition, Operand, StrategySpec } from '../strategy/types.ts';
 
 export type ClaimStatus = 'adopted' | 'debunked';
@@ -67,15 +68,20 @@ function conditionKey(condition: Condition): string {
 }
 
 /**
- * Two specs describe the same claim when their entry and exit rules match.
- * Conditions are sorted because "A and B" is the same rule as "B and A", while
- * position size and symbol list are deliberately excluded — those are choices
- * about *applying* a belief, not the belief itself.
+ * Two specs describe the same claim when their side, timeframe, and entry and
+ * exit rules all match. Conditions are sorted because "A and B" is the same
+ * rule as "B and A", while position size and symbol list are deliberately
+ * excluded — those are choices about *applying* a belief, not the belief itself.
+ *
+ * The direction is part of the identity, not a detail: "rsi below 30 means buy"
+ * and "rsi below 30 means sell" are opposite claims about the world, and a
+ * library that filed them together would report students as agreeing at the
+ * exact moment they most disagree.
  */
 export function claimKey(spec: StrategySpec): string {
   const entry = spec.entry.map(conditionKey).sort().join(' AND ');
   const exit = spec.exit.map(conditionKey).sort().join(' OR ');
-  return `[${spec.timeframe}] ENTRY ${entry} | EXIT ${exit || '(ไม่มี)'}`;
+  return `[${spec.timeframe} ${directionOf(spec)}] ENTRY ${entry} | EXIT ${exit || '(ไม่มี)'}`;
 }
 
 /** Same shape as the key, but written for a person rather than for matching. */
@@ -91,7 +97,11 @@ function readableCondition(condition: Condition): string {
 export function claimStatement(spec: StrategySpec): string {
   const entry = spec.entry.map(readableCondition).join(' และ ');
   const exit = spec.exit.map(readableCondition).join(' หรือ ');
-  return `บนกราฟ ${spec.timeframe}: เข้าเมื่อ ${entry}` + (exit ? ` · ออกเมื่อ ${exit}` : ' · ไม่มีเงื่อนไขออก');
+  const side = directionOf(spec) === 'short' ? 'เล่นขาลง' : 'เล่นขาขึ้น';
+  return (
+    `บนกราฟ ${spec.timeframe} ${side}: เข้าเมื่อ ${entry}` +
+    (exit ? ` · ออกเมื่อ ${exit}` : ' · ไม่มีเงื่อนไขออก')
+  );
 }
 
 // ---------- consensus ----------

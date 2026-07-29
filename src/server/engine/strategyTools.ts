@@ -13,8 +13,9 @@
 
 import { backtest, buyAndHold } from '../../core/strategy/backtest.ts';
 import { judge, type Verdict } from '../../core/strategy/hypothesis.ts';
+import { alphaByRegime, describeRegime, type Regime } from '../../core/strategy/regime.ts';
 import { reviewSpec, validateSpec } from '../../core/strategy/schema.ts';
-import type { StrategySpec } from '../../core/strategy/types.ts';
+import { directionOf, type StrategySpec } from '../../core/strategy/types.ts';
 import type { StrategyStore } from '../db/strategyStore.ts';
 import type { MarketDataProvider } from '../marketData.ts';
 import { addEdge, addNode, searchNodes, updateNode, type GraphOpsContext } from './graphOps.ts';
@@ -32,6 +33,22 @@ export interface TestOutcome {
     winRate: number;
     maxDrawdownPct: number;
   }[];
+  /**
+   * The same run, split by what the market was doing at the time. A single
+   * blended number hides the answer the academy is actually after (spec §6,
+   * rule 9): not "is this rule good" but "when is it good".
+   */
+  byRegime?: {
+    regime: Regime;
+    marketWas: string;
+    alphaPct: number;
+    strategyReturnPct: number;
+    benchmarkReturnPct: number;
+    trades: number;
+    barsInPosition: number;
+  }[];
+  bestIn?: string;
+  worstIn?: string;
   verdict?: Verdict;
   /** Set when the result was written into the student's graph. */
   recorded?: { hypothesisId: string; strategyNodeId?: string; activatedId?: string };
@@ -58,6 +75,7 @@ export async function testStrategy(
   const perSymbol: NonNullable<TestOutcome['perSymbol']> = [];
   let totalAlpha = 0;
   let totalTrades = 0;
+  let totalBarsInPosition = 0;
   let worstDrawdown = 0;
   let strategyReturn = 0;
   let benchmarkReturn = 0;
@@ -67,10 +85,16 @@ export async function testStrategy(
     return { ok: false, errors: ['ไม่มีเหรียญไหนอยู่ในรายชื่อที่อนุญาต — ทดสอบไม่ได้'], warnings };
   }
 
+  // Regimes are read from the first tradable symbol's history: the point is
+  // when this rule works, and running the split per symbol would multiply the
+  // output without changing the answer.
+  let regimeReport: ReturnType<typeof alphaByRegime> | null = null;
+
   for (const symbol of tradable) {
     const candles = await market.history(symbol, BARS);
     const run = backtest(spec, symbol, candles);
     const bench = buyAndHold(candles);
+    if (!regimeReport) regimeReport = alphaByRegime(spec, symbol, candles);
     perSymbol.push({
       symbol,
       strategyReturnPct: round(run.returnPct),
@@ -82,6 +106,7 @@ export async function testStrategy(
     });
     totalAlpha += run.returnPct - bench.returnPct;
     totalTrades += run.trades.length;
+    totalBarsInPosition += run.barsInPosition;
     worstDrawdown = Math.max(worstDrawdown, run.maxDrawdownPct);
     strategyReturn += run.returnPct;
     benchmarkReturn += bench.returnPct;
@@ -99,6 +124,7 @@ export async function testStrategy(
       winRate: 0,
       maxDrawdownPct: worstDrawdown,
       barsTested: BARS,
+      barsInPosition: totalBarsInPosition,
     },
     {
       trades: [],
@@ -108,15 +134,30 @@ export async function testStrategy(
       winRate: 0,
       maxDrawdownPct: 0,
       barsTested: BARS,
+      barsInPosition: BARS,
     },
   );
 
   const outcome: TestOutcome = { ok: true, perSymbol, verdict };
   if (warnings.length) outcome.warnings = warnings;
 
+  if (regimeReport && regimeReport.byRegime.length > 0) {
+    outcome.byRegime = regimeReport.byRegime.map((v) => ({
+      regime: v.regime,
+      marketWas: describeRegime(v.regime),
+      alphaPct: v.alphaPct,
+      strategyReturnPct: v.returnPct,
+      benchmarkReturnPct: v.benchmarkPct,
+      trades: v.trades,
+      barsInPosition: v.barsInPosition,
+    }));
+    if (regimeReport.bestRegime) outcome.bestIn = describeRegime(regimeReport.bestRegime);
+    if (regimeReport.worstRegime) outcome.worstIn = describeRegime(regimeReport.worstRegime);
+  }
+
   if (hypothesisId) {
     outcome.recorded = { hypothesisId };
-    recordVerdict(ctx, hypothesisId, spec, verdict, perSymbol);
+    recordVerdict(ctx, hypothesisId, spec, verdict, perSymbol, outcome.byRegime);
   }
   return outcome;
 }
@@ -189,6 +230,7 @@ function recordVerdict(
   spec: StrategySpec,
   verdict: Verdict,
   perSymbol: NonNullable<TestOutcome['perSymbol']>,
+  byRegime: TestOutcome['byRegime'],
 ): void {
   updateNode(ctx, {
     nodeId: hypothesisId,
@@ -196,9 +238,20 @@ function recordVerdict(
     status: verdict.status,
   });
 
+  const side = directionOf(spec) === 'short' ? 'เล่นขาลง' : 'เล่นขาขึ้น';
+  // The conditions go into the note, not just the number. A lesson that says
+  // "this rule works" without saying when is a lesson that will be misapplied.
+  const conditions = (byRegime ?? [])
+    .map(
+      (r) =>
+        `${r.marketWas}: alpha ${r.alphaPct}% (สูตร ${r.strategyReturnPct}% · ` +
+        `ไม้บรรทัด ${r.benchmarkReturnPct}% · ${r.trades} เทรด)`,
+    )
+    .join('\n');
+
   const evidence = addNode(ctx, {
     kind: 'lesson',
-    title: `ผลทดสอบสูตร ${spec.name}: ${verdict.status}`,
+    title: `ผลทดสอบสูตร ${spec.name} (${side}): ${verdict.status}`,
     body:
       `${verdict.summary}\n\n` +
       perSymbol
@@ -207,7 +260,8 @@ function recordVerdict(
             `${s.symbol}: สูตร ${s.strategyReturnPct}% · ไม้บรรทัด ${s.benchmarkReturnPct}% · ` +
             `alpha ${s.alphaPct}% · ${s.trades} เทรด · ขาดทุนหนักสุด ${s.maxDrawdownPct}%`,
         )
-        .join('\n'),
+        .join('\n') +
+      (conditions ? `\n\nแยกตามสภาพตลาด:\n${conditions}` : ''),
     confidence: 0.9, // the measurement itself is solid, whatever it says
   });
 

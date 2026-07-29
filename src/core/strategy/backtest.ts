@@ -8,10 +8,12 @@
  */
 
 import { evaluate } from './evaluate.ts';
-import type { Candle, Position, StrategySpec } from './types.ts';
+import { directionOf } from './types.ts';
+import type { Candle, Position, StrategySpec, TradeDirection } from './types.ts';
 
 export interface BacktestTrade {
   symbol: string;
+  direction: TradeDirection;
   entryTime: number;
   entryPrice: number;
   exitTime: number;
@@ -33,6 +35,12 @@ export interface BacktestResult {
   /** Worst peak-to-trough drop in portfolio value, percent. */
   maxDrawdownPct: number;
   barsTested: number;
+  /**
+   * Bars spent holding a position. A strategy with no exit rule finishes with
+   * zero *completed* trades while having been in the market the whole time, so
+   * this is the honest answer to "did it participate at all?".
+   */
+  barsInPosition: number;
 }
 
 export interface BacktestOptions {
@@ -47,6 +55,7 @@ interface OpenTrade {
   entryTime: number;
   entryPrice: number;
   quantity: number;
+  entryFee: number;
   entryReason: string;
 }
 
@@ -63,6 +72,8 @@ export function backtest(
   const startingCash = options.startingCash ?? 1000;
   const feeRate = options.feeRate ?? 0.001;
   const warmup = options.warmupBars ?? 20;
+  const direction = directionOf(spec);
+  const long = direction === 'long';
 
   let cash = startingCash;
   let position: Position | null = null;
@@ -72,6 +83,7 @@ export function backtest(
   let peak = startingCash;
   let maxDrawdownPct = 0;
   let barsTested = 0;
+  let barsInPosition = 0;
 
   for (let i = warmup; i < candles.length; i++) {
     const bar = candles[i] as Candle;
@@ -86,31 +98,40 @@ export function backtest(
     });
 
     for (const order of orders) {
-      if (order.side === 'buy' && !position) {
-        const spend = (cash * order.sizePct) / 100;
-        if (spend <= 0) continue;
-        const quantity = (spend * (1 - feeRate)) / bar.close;
-        cash -= spend;
-        position = { symbol, quantity, avgPrice: bar.close };
+      if (order.intent === 'open' && !position) {
+        // Both sides are sized against cash — a short receives money on open
+        // but still owes the asset, so it gets no bigger an allowance.
+        const notional = (cash * order.sizePct) / 100;
+        if (notional <= 0) continue;
+        const quantity = notional / bar.close;
+        const fee = notional * feeRate;
+        cash += (long ? -notional : notional) - fee;
+        position = { symbol, quantity: long ? quantity : -quantity, avgPrice: bar.close };
         open = {
           entryTime: bar.openTime,
           entryPrice: bar.close,
           quantity,
+          entryFee: fee,
           entryReason: order.reason,
         };
-      } else if (order.side === 'sell' && position && open) {
-        const proceeds = position.quantity * bar.close * (1 - feeRate);
-        const cost = open.quantity * open.entryPrice;
-        cash += proceeds;
+      } else if (order.intent === 'close' && position && open) {
+        const gross = open.quantity * bar.close;
+        const exitFee = gross * feeRate;
+        cash += (long ? gross : -gross) - exitFee;
+        // A long earns the rise, a short the fall. Both pay both fees.
+        const move = long ? bar.close - open.entryPrice : open.entryPrice - bar.close;
+        const pnl = move * open.quantity - open.entryFee - exitFee;
+        const committed = open.entryPrice * open.quantity;
         trades.push({
           symbol,
+          direction,
           entryTime: open.entryTime,
           entryPrice: open.entryPrice,
           exitTime: bar.openTime,
           exitPrice: bar.close,
-          quantity: position.quantity,
-          pnl: proceeds - cost,
-          returnPct: ((proceeds - cost) / cost) * 100,
+          quantity: open.quantity,
+          pnl,
+          returnPct: committed > 0 ? (pnl / committed) * 100 : 0,
           entryReason: open.entryReason,
           exitReason: order.reason,
         });
@@ -119,6 +140,7 @@ export function backtest(
       }
     }
 
+    if (position) barsInPosition++;
     const equity = cash + (position ? position.quantity * bar.close : 0);
     if (equity > peak) peak = equity;
     const drawdown = ((peak - equity) / peak) * 100;
@@ -139,6 +161,7 @@ export function backtest(
     winRate: trades.length ? (wins / trades.length) * 100 : 0,
     maxDrawdownPct,
     barsTested,
+    barsInPosition,
   };
 }
 
@@ -162,6 +185,7 @@ export function buyAndHold(candles: Candle[], options: BacktestOptions = {}): Ba
       winRate: 0,
       maxDrawdownPct: 0,
       barsTested: 0,
+      barsInPosition: 0,
     };
   }
 
@@ -184,6 +208,7 @@ export function buyAndHold(candles: Candle[], options: BacktestOptions = {}): Ba
     winRate: 0,
     maxDrawdownPct,
     barsTested: candles.length - warmup,
+    barsInPosition: candles.length - warmup,
   };
 }
 

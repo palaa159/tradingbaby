@@ -493,3 +493,91 @@ Second run, her brain:
 
 Confidence 1 that *the library says this*; 0.267 that it is true — under the
 0.35 ceiling, exactly as designed. She has heard it. She has not proven it.
+
+## H4 — Both sides of the market, and the question that needs them
+
+The maker changed a founding assumption: *"สถาบันนี้สามารถ short ได้. make the
+trading style agnostic. Our goal is to find the best trading strategy for
+certain market cycles and timeframes."*
+
+That is two changes, and the second is the one that matters.
+
+### Why long-only was a bug, not a limitation
+
+The old spec said spot-only, and that assumption had reached into five modules.
+The clearest symptom was in the exam I had just rebuilt: with no shorting,
+`sell` and `wait` are the *same physical act* for a student holding nothing —
+yet they scored 100 and 55. The engine was grading a word, not a decision.
+
+A toolchain that can only express one side does not leave students free to
+discover the other. It makes them discover the one side and call it a finding.
+So this became design rule 9 in the spec: **the academy holds no view on which
+way a student should bet, and the tools must not smuggle one in.**
+
+### What changed
+
+| Layer | Before | Now |
+|---|---|---|
+| DSL | entry always buys | `direction: 'long' \| 'short'`, omitted means long |
+| Order | `side: buy \| sell` | plus `intent: open \| close` — with shorting, the side no longer says which |
+| Portfolio | sells clamped to holdings | signed quantities; a short is a debt that shrinks as the price falls |
+| Guardrails | only buys size-checked | anything that *opens* exposure is size-checked; `allowShort` defaults on |
+| Exam | `long \| flat` | `short \| flat \| long` as a ladder — `buy` steps up, `sell` steps down |
+| Library | keyed on rules + timeframe | key includes the side |
+
+That last row is small and load-bearing. "RSI below 30 means buy" and "RSI below
+30 means sell" are opposite claims about the world; a library that filed them
+under one key would report students as agreeing at the moment they most
+disagree.
+
+Every existing strategy keeps its meaning: `direction` omitted resolves to
+`long`, which is what those specs were tested as (build contract §9.5).
+
+The exam's answer key is now *derived* rather than reasoned out — `bestAction`
+scores all three actions and returns the winner, so the key cannot drift from
+the marking. A test asserts that across every regime and starting position.
+
+### The part that was actually asked for
+
+Shorting was the prerequisite. The goal was *"best strategy for certain market
+cycles and timeframes"* — and once students can bet either way, a single
+blended return stops being merely incomplete and becomes misleading.
+
+`core/strategy/regime.ts` labels every window `bull`, `bear` or `chop`, on two
+numbers: how far price travelled net, and **what share of its total movement went
+one way**. The second is what separates a trend from a wide busy range — a market
+can walk a mile and arrive back where it started, and only the directionality
+term notices.
+
+`test_strategy` now returns `byRegime` alongside the blended figure. Measured on
+a synthetic full cycle (rally → range → slide → range), one rule:
+
+```
+rsi-dip-long — blended alpha −6.9%
+  ตลาดออกข้าง   alpha  +21.6%   (สูตร  +11.0%   ไม้บรรทัด  −10.6%)
+  ตลาดขาลง      alpha   +3.1%   (สูตร  −51.7%   ไม้บรรทัด  −54.7%)
+  ตลาดขาขึ้น    alpha  −75.3%   (สูตร   +5.0%   ไม้บรรทัด  +80.3%)
+```
+
+The blended −6.9% reads as "mediocre rule". It is the average of +21.6, +3.1 and
+−75.3, and it is true of none of them. The same rule flipped short reports +34%
+overall — which reads as "good rule" — and that is one bear segment scoring
++105.9% dragging along a −85.7% rally.
+
+**A number that averages the market a strategy is built for against the market
+it is blind to describes neither.** That is the whole argument for the split, and
+it is why the maker's goal needed the regime axis, not just the short side.
+
+### Deliberately not done
+
+`judge()` still adopts on the blended figure, not the best regime. Adoption
+means "trade this for real", and a specialist deployed into the wrong regime
+loses money — so regime-conditional adoption needs the engine to classify the
+*live* market, not just historical windows. Cherry-picking the best segment
+would turn the judge into a rubber stamp. The split is recorded in the student's
+lesson note either way, so the knowledge is kept even though the gate stays shut.
+
+Timeframe is the other half of the maker's question. It is already a spec field
+and part of the library key, so students can compare `1h` against `4h` today by
+testing both — but nothing yet *sweeps* timeframes for them. That is the next
+piece.
