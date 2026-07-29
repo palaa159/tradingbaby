@@ -3,6 +3,7 @@
  *
  *   bun run dashboard            # http://localhost:4173
  *   bun run dashboard -- --db=path --port=4173
+ *   bun run dashboard -- --tls-cert=origin.crt --tls-key=origin.key   # serve HTTPS
  *
  * Read-only by design (spec §8): the maker observes, never edits knowledge.
  * Every route replays the append-only event log, so the timeline slider is
@@ -32,6 +33,8 @@ const students = new StudentStore(db);
 const strategies = new StrategyStore(db);
 const trading = new TradingStore(db);
 const port = Number(arg('port') ?? 4173);
+const tlsCert = arg('tls-cert');
+const tlsKey = arg('tls-key');
 
 const html = await Bun.file(new URL('./index.html', import.meta.url)).text();
 
@@ -90,6 +93,9 @@ function classroom() {
 
 const server = Bun.serve({
   port,
+  ...(tlsCert && tlsKey
+    ? { tls: { cert: Bun.file(tlsCert), key: Bun.file(tlsKey) } }
+    : {}),
   async fetch(request) {
     const url = new URL(request.url);
 
@@ -170,5 +176,7 @@ const server = Bun.serve({
   },
 });
 
-console.log(`🏫 Alpha Academy dashboard: http://localhost:${server.port}`);
+console.log(
+  `🏫 Alpha Academy dashboard: ${tlsCert ? 'https' : 'http'}://localhost:${server.port}`,
+);
 console.log(`   นักเรียน ${students.list().length} คน`);

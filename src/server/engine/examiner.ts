@@ -13,13 +13,21 @@ import { combineScores, scoreAction, bestAction } from '../../core/exam/exam.ts'
 import type { Action, ExamAnswer, ExamQuestion, GradedAnswer } from '../../core/exam/types.ts';
 import { describePersonality } from '../../core/personality.ts';
 import type { Student } from '../../core/types.ts';
+import { effortFor } from './effort.ts';
 import { searchNodes, type GraphOpsContext } from './graphOps.ts';
 
 async function ask(prompt: string, system: string, model: string): Promise<string> {
   let text = '';
   const run = query({
     prompt,
-    options: { systemPrompt: system, model, maxTurns: 1, permissionMode: 'default', allowedTools: [] },
+    options: {
+      systemPrompt: system,
+      model,
+      ...effortFor(model),
+      maxTurns: 1,
+      permissionMode: 'default',
+      allowedTools: [],
+    },
   });
   for await (const message of run) {
     if (message.type === 'result' && message.subtype === 'success') text = message.result;

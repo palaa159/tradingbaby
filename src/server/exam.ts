@@ -61,7 +61,7 @@ for (const student of roster) {
 
   for (const question of paper) {
     const answer = await sitExam(student, ctx, question, config.models.short);
-    const result = await gradeAnswer(question, answer, config.models.short);
+    const result = await gradeAnswer(question, answer, config.models.judge);
     graded.push(result);
     citations.push(answer.citedNodeIds);
 

@@ -11,6 +11,7 @@ import type { Student } from '../../core/types.ts';
 import type { EventStore } from '../../core/eventLog.ts';
 import type { StrategyStore } from '../db/strategyStore.ts';
 import { readBrainState } from '../../core/brainState.ts';
+import { effortFor } from './effort.ts';
 import { curiosityQueue, type GraphOpsContext } from './graphOps.ts';
 import { buildSystemPrompt, cyclePrompt, type CycleKind } from './prompts.ts';
 import { createStudentTools, type LibraryAccess } from './tools.ts';
@@ -21,6 +22,8 @@ export interface CycleModels {
   short: string;
   /** Bigger model for daily reviews. */
   dailyReview: string;
+  /** Grades exam answers — the judge never runs a cycle of its own. */
+  judge: string;
 }
 
 export interface CycleResult {
@@ -68,6 +71,7 @@ export async function runCycle(kind: CycleKind, opts: RunCycleOptions): Promise<
     options: {
       systemPrompt: buildSystemPrompt(opts.student, hunger, kind, curiosity, brain),
       model,
+      ...effortFor(model),
       maxTurns: opts.maxTurns ?? (kind === 'short' ? 20 : 36),
       // 'default' + allowedTools: whitelisted tools run without prompting,
       // everything else is denied. (bypassPermissions breaks under root.)
