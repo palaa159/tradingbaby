@@ -208,6 +208,51 @@ once there are enough sittings to see whether knowledge ever separates from
 caution. Candidate fixes are lowering the `wait` floor, or scoring `wait`
 against the drawdown the student avoided rather than a flat constant.
 
+## P8 — Connecting students to the machinery (done)
+
+P1–P5 built an engine students could not reach. They had seven tools — read and
+write notes, diary, glance at the market — and no way to author a strategy or
+test a belief. `strategy` was not even a node kind they could create. The whole
+Learn → **Build** → **Measure** → Repeat middle was reachable only from a script.
+
+- [x] `strategySpecSchema` (zod, `.strict()`) validates student JSON at the tool
+      boundary — the debt carried from P1. Unknown fields are rejected rather
+      than silently dropped, so a spec that mentions `leverage` cannot look accepted
+- [x] `reviewSpec()` warns about specs that parse but say nothing: no exit
+      condition, symbols outside the universe, a comparison of two constants
+- [x] `test_strategy` tool — backtests across the spec's symbols against
+      buy-and-hold on the same window, judges the result, and **writes the verdict
+      back onto the hypothesis** with the numbers as a linked `lesson`. This is
+      the `judge()` wiring carried from P2
+- [x] `adopt_strategy` tool — activates only what the judge adopted. There is no
+      argument field; the sole path to activation runs through the backtest
+- [x] `MarketDataProvider.history()` for backtest-length data, on both providers
+- [x] `strategy` node kind and `compiled_into` edge opened to students
+
+**Measured** — the full loop, end to end on a real database:
+
+| Step | Result |
+|---|---|
+| Hypothesis created | confidence 0.3, `untested` |
+| Backtest | strategy **−4.37%** vs benchmark **+2.04%** → alpha **−6.41%**, 7 trades |
+| Verdict | **`debunked`**, confidence 0.3 → **0.09** |
+| Written back | hypothesis status and confidence updated; `lesson` node holds the numbers |
+| Malformed spec | actionable Thai errors: *"ชื่อสูตรใช้ a-z 0-9 และ - เท่านั้น"*, `sizePct` out of range |
+| Activation attempt | **refused** — the judge debunked it, and there is nothing to argue with |
+
+A belief was killed by evidence and the student could not talk its way out.
+
+### Open finding: students form questions, not hypotheses
+
+A real cycle with the new tools available produced three new `question` nodes and
+a diary entry — and no attempt to test anything, correctly, because มะลิ holds no
+`hypothesis` nodes at all. Her graph is questions, concepts, sources, and lessons.
+
+So the loop is *connected* but not yet *travelled*: nothing in the current prompt
+pushes a student from "I wonder about X" to "I claim X, testably". That is the
+next gap, and it is a prompt-and-cycle-design problem rather than a missing
+mechanism.
+
 ---
 
 ## Phase 2 complete
@@ -220,10 +265,9 @@ and sit exams marked by a judge that never sees who wrote the answer.
 
 Carried forward into Phase 3:
 - The `wait` floor in exam scoring (see P7) needs revisiting with more sittings
-- `judge()` from P2 still needs wiring into the student's graph so verdicts
-  update hypothesis nodes with the backtest as linked evidence
-- A zod schema at the tool boundary so student-authored strategy JSON is
-  validated before it reaches the engine
+- Students form questions but not hypotheses (see P8), so the loop is connected
+  but not yet travelled — a prompt and cycle-design problem
+- ~~`judge()` wiring~~ and ~~strategy schema validation~~ closed in P8
 
 ## Working agreement for this phase
 

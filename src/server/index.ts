@@ -13,6 +13,7 @@ import { replay } from '../core/eventLog.ts';
 import type { Student } from '../core/types.ts';
 import { DEFAULT_ACADEMY } from './academyConfig.ts';
 import { openAcademyDb, SqliteEventStore, StudentStore } from './db/sqliteStore.ts';
+import { StrategyStore } from './db/strategyStore.ts';
 import { runCycle } from './engine/studentAgent.ts';
 import type { CycleKind } from './engine/prompts.ts';
 import { BinancePublicMarketData } from './marketData.ts';
@@ -35,6 +36,7 @@ if (!enrollment) {
 const db = openAcademyDb(arg('db') ?? 'academy.db');
 const store = new SqliteEventStore(db);
 const students = new StudentStore(db);
+const strategies = new StrategyStore(db);
 
 const student: Student = students.enroll(
   enrollment.seed,
@@ -57,6 +59,7 @@ const result = await runCycle(kind, {
   market,
   metabolism: config.metabolism,
   models: config.models,
+  strategies,
 });
 
 students.saveEnergy(student.id, result.energyAfter);

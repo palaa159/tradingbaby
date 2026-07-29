@@ -6,6 +6,9 @@
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 
+import type { StrategyStore } from '../db/strategyStore.ts';
+import { adoptStrategy, testStrategy } from './strategyTools.ts';
+
 import {
   addEdge,
   addNode,
@@ -23,8 +26,9 @@ const NODE_KINDS = [
   'source',
   'question',
   'diary_entry',
+  'strategy',
   'feature_request',
-] as const; // strategy/trade_journal/conversation arrive in Phase 2
+] as const; // trade_journal/conversation are written by the engine, not by hand
 
 const EDGE_KINDS = [
   'learned_from',
@@ -32,6 +36,7 @@ const EDGE_KINDS = [
   'supports',
   'contradicts',
   'debunked_by',
+  'compiled_into',
   'spawned_question',
 ] as const;
 
@@ -41,7 +46,33 @@ function text(value: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(value, null, 1) }] };
 }
 
-export function createStudentTools(ctx: GraphOpsContext, market: MarketDataProvider) {
+/**
+ * The spec is described loosely here and validated strictly in strategyTools —
+ * one schema of record (spec §14.6), and validation errors come back as
+ * feedback the student can act on rather than a tool-call rejection it cannot see.
+ */
+const STRATEGY_SPEC_SHAPE = z
+  .object({
+    name: z.string().describe('ชื่อสูตร a-z 0-9 และ - เท่านั้น'),
+    symbols: z.array(z.string()).describe('เหรียญที่สูตรนี้ใช้ ต้องอยู่ใน universe'),
+    timeframe: z.string().describe('1h, 4h หรือ 1d'),
+    entry: z
+      .array(z.any())
+      .describe(
+        'เงื่อนไขเข้า (ต้องจริงทุกข้อ) แต่ละข้อ: ' +
+          '{left:{kind:"indicator",name:"rsi"|"sma"|"ema"|"price"|"volume",period?:number}, ' +
+          'op:"<"|"<="|">"|">="|"crosses_above"|"crosses_below", right:{kind:"number",value:number}}',
+      ),
+    exit: z.array(z.any()).describe('เงื่อนไขออก (จริงข้อใดข้อหนึ่งก็ออก) รูปแบบเดียวกับ entry'),
+    sizePct: z.number().describe('ขนาดไม้เป็น % ของพอร์ต 1-100 (กติกาบ้านอาจลดให้อีกที)'),
+  })
+  .describe('สูตรเทรดแบบกฎตายตัว');
+
+export function createStudentTools(
+  ctx: GraphOpsContext,
+  market: MarketDataProvider,
+  strategies?: StrategyStore,
+) {
   return createSdkMcpServer({
     name: 'academy',
     version: '1.0.0',
@@ -157,6 +188,36 @@ export function createStudentTools(ctx: GraphOpsContext, market: MarketDataProvi
             changePct24h: snap.changePct24h,
             last12h: snap.candles1h.slice(-12).map((c) => c.close),
           });
+        },
+      ),
+      tool(
+        'test_strategy',
+        'ทดสอบสูตรเทรดกับข้อมูลย้อนหลัง — ระบบจะเทียบกับ "ไม้บรรทัด" (ซื้อถือยาว) แล้วตัดสินให้ว่า' +
+          ' รับเข้า/ตีตก/ยังตัดสินไม่ได้ ผลจะถูกบันทึกลงข้อสงสัยที่ระบุโดยอัตโนมัติ' +
+          ' ทดสอบได้ไม่จำกัด ไม่มีเงินจริงเกี่ยวข้อง',
+        {
+          spec: STRATEGY_SPEC_SHAPE,
+          hypothesisId: z
+            .string()
+            .optional()
+            .describe('id ของข้อสงสัยที่สูตรนี้มาจาก — ใส่แล้วผลจะอัปเดตความมั่นใจให้เอง'),
+        },
+        async (args) => text(await testStrategy(ctx, market, args.spec, args.hypothesisId)),
+      ),
+      tool(
+        'adopt_strategy',
+        'เปิดใช้สูตรจริง — ระบบจะทดสอบก่อน และ**เปิดให้เฉพาะสูตรที่ผลทดสอบรับเข้าเท่านั้น**' +
+          ' เถียงไม่ได้ ถ้าไม่ผ่านต้องกลับไปแก้สูตรหรือหาความรู้เพิ่ม' +
+          ' เมื่อเปิดใช้แล้วสูตรจะแก้ไม่ได้ อยากเปลี่ยนต้องเปิดเวอร์ชันใหม่',
+        {
+          spec: STRATEGY_SPEC_SHAPE,
+          hypothesisId: z.string().optional().describe('id ของข้อสงสัยต้นทาง'),
+        },
+        async (args) => {
+          if (!strategies) {
+            return text({ ok: false, errors: ['ยังเปิดใช้สูตรไม่ได้ในโหมดนี้ — ทดสอบได้อย่างเดียว'] });
+          }
+          return text(await adoptStrategy(ctx, market, strategies, args.spec, args.hypothesisId));
         },
       ),
     ],

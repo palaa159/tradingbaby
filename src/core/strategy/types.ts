@@ -9,7 +9,7 @@
 export type IndicatorName = 'price' | 'volume' | 'rsi' | 'sma' | 'ema';
 
 export type Operand =
-  | { kind: 'indicator'; name: IndicatorName; period?: number }
+  | { kind: 'indicator'; name: IndicatorName; period?: number | undefined }
   | { kind: 'number'; value: number };
 
 export type CompareOp = '<' | '<=' | '>' | '>=' | 'crosses_above' | 'crosses_below';
