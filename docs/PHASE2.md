@@ -274,3 +274,51 @@ Carried forward into Phase 3:
 `bun run typecheck` and `bun test` stay green at every commit. Determinism is a
 product requirement, not a style preference: no `Math.random`, no wall-clock reads
 inside anything the replay path touches.
+
+## P9 — Making the loop travelled (done)
+
+P8 connected the machinery; nothing walked through it. The first real brain held
+**11 questions and 0 hypotheses** — the prompt taught students to write a question
+when confused and never to turn accumulated knowledge into a testable claim.
+
+- [x] `readBrainState()` shows a student its own shape each cycle: counts by kind,
+      hypotheses still untested, and whether it has enough solid knowledge to
+      commit to a claim but has not committed to one
+- [x] The prompt now teaches the distinction directly — a **question** is what you
+      do not know, a **hypothesis** is what you dare to claim and can measure —
+      with a worked example of the difference
+- [x] Cycles adapt: a daily review with enough knowledge and nothing pending asks
+      for a hypothesis; a short cycle with something pending switches its main job
+      to testing it
+- [x] `safe()` wraps tool handlers that touch the network so an exception can
+      never escape and kill the in-process MCP bridge
+
+**Measured** — the nudge worked on the first try. มะลิ, whose brain had produced
+only questions for three weeks, wrote two hypotheses in one review:
+
+> "ถ้า Hammer ปรากฏในช่วง downtrend พร้อม volume สูงกว่าค่าเฉลี่ย 20 วัน แล้วซื้อ จะชนะการถือเฉย ๆ"
+> "RSI(14) ต่ำกว่า 30 บน 1h → ซื้อ → ออกเมื่อ RSI สูงกว่า 70 จะชนะการถือเฉย ๆ"
+
+Both are framed as *beating buy-and-hold* rather than as making money, which is
+the alpha framing the prompt teaches. The next short cycle switched to testing
+mode on its own.
+
+### The student found two real defects by using the thing
+
+Trying to test those hypotheses, มะลิ recorded, unprompted:
+
+- `[lesson] ระบบทดสอบยังไม่รองรับ candlestick pattern (มั่นใจ 0.8)` — correct. The
+  DSL has indicators and comparisons, so Hammer and other shape patterns are
+  simply not expressible. A real limitation, discovered by trying to use it
+- `[lesson] เครื่องมือ test_strategy ขัดข้อง socket closed (มั่นใจ 0.95)` — a real
+  bug. The geo-blocked exchange threw, the exception escaped the MCP handler,
+  and the bridge died. Fixed here by `safe()`; the geo-block is environmental
+  but the failure mode was ours
+
+She then went and researched RSI and moving averages instead, and formed a third
+hypothesis. That is the metabolism and the "never end a cycle empty-handed" rule
+doing exactly what they were written for.
+
+Carried to Phase 3: the DSL cannot express candlestick patterns, which is a
+genuine gap between what students learn from the internet and what they are
+allowed to test.
