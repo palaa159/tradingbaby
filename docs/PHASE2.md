@@ -165,11 +165,65 @@ The asymmetry is the interesting part: knowledge flowed from the experienced
 student to the new one, and arrived as something to prove rather than something
 to believe.
 
-## P7 — Exams + report card
+## P7 — Exams + report card (done)
 
-- [ ] Question generation from recent real market situations
-- [ ] Separate AI judge session, rubric scored, answer key from what the market did
-- [ ] Report card view
+- [x] Questions cut from price history at a decision point: the student sees the
+      context bars, never the horizon. The answer key is simply what the market
+      did next, so a confident wrong answer cannot argue its way to a good score
+- [x] Two separate sessions (spec §14.2). The student answers with its own brain
+      in front of it; the judge sees the question, the answer, and the outcome —
+      but never the student's notes, name, or personality, so it grades the
+      argument rather than the arguer
+- [x] Split scoring: the action score is arithmetic against the outcome, the
+      reasoning score is the judge's, and the outcome carries 65% because good
+      reasoning that loses money is still a losing answer
+- [x] Asymmetric penalties: waiting through a real move scores 55, acting on
+      noise 40, taking the wrong side of a real move 10 — only one of those
+      actually loses money
+- [x] Report card: average, action accuracy, and which notes the student leans on
+- [x] `bun run exam -- --questions=N` sits the whole class on one paper
+
+**Measured** — first real sitting, 2 questions × 3 students:
+
+| Student | Average | Action accuracy |
+|---|---|---|
+| มะลิ (20 days of notes) | 59.5 | 0% |
+| ภูผา (one class session) | 59.5 | 0% |
+| ข้าวฟ่าง (empty brain) | **63.5** | 0% |
+
+The judge's critiques were specific and fair — *"ไม่วิเคราะห์ shape 113.4, ไม่ดู trend
+24 แท่ง (ขาลงชัด), ไม่ตรวจ volume ล่าสุด vs เฉลี่ย 100 — เหตุผลค่อนข้างผิวเผิน"*.
+
+### Open finding: the `wait` floor is too comfortable
+
+Every student answered `wait` on every question, and the correct answer was
+`sell` both times. Because waiting scores 55 and honest uncertainty scores well
+on reasoning, **a student who knows nothing and always says "I don't know" lands
+around 60** — which is how the empty-brained student outscored the one with
+three weeks of notes.
+
+That is a real scoring flaw, not a fluke of these six answers. But six answers is
+also not enough to fit a curve to, so it is recorded rather than patched: revisit
+once there are enough sittings to see whether knowledge ever separates from
+caution. Candidate fixes are lowering the `wait` floor, or scoring `wait`
+against the drawdown the student avoided rather than a flat constant.
+
+---
+
+## Phase 2 complete
+
+All seven pieces shipped. What exists now that did not before: students author
+deterministic strategies, test them against history, trade them on paper under
+rules they cannot change, feed themselves on the profit, get graded against the
+market rather than against zero, teach each other without being able to copy,
+and sit exams marked by a judge that never sees who wrote the answer.
+
+Carried forward into Phase 3:
+- The `wait` floor in exam scoring (see P7) needs revisiting with more sittings
+- `judge()` from P2 still needs wiring into the student's graph so verdicts
+  update hypothesis nodes with the backtest as linked evidence
+- A zod schema at the tool boundary so student-authored strategy JSON is
+  validated before it reaches the engine
 
 ## Working agreement for this phase
 
