@@ -29,6 +29,9 @@ export type EdgeKind =
 
 export type HypothesisStatus = 'untested' | 'testing' | 'adopted' | 'debunked';
 
+/** Extra lifecycle for `question` nodes (คำถามคาใจ). */
+export type NodeStatus = HypothesisStatus | 'answered';
+
 /** Beliefs are never deleted (spec principle 3) — only status changes. */
 export interface KnowledgeNode {
   id: string;
@@ -38,7 +41,7 @@ export interface KnowledgeNode {
   body: string;
   /** 0..1 — evidence-driven. Hearsay starts low (spec §9.2). */
   confidence: number;
-  status?: HypothesisStatus;
+  status?: NodeStatus;
   createdAt: number; // epoch ms
   updatedAt: number;
 }
