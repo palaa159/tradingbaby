@@ -13,7 +13,7 @@ import type { StrategyStore } from '../db/strategyStore.ts';
 import { readBrainState } from '../../core/brainState.ts';
 import { curiosityQueue, type GraphOpsContext } from './graphOps.ts';
 import { buildSystemPrompt, cyclePrompt, type CycleKind } from './prompts.ts';
-import { createStudentTools } from './tools.ts';
+import { createStudentTools, type LibraryAccess } from './tools.ts';
 import type { MarketDataProvider } from '../marketData.ts';
 
 export interface CycleModels {
@@ -40,6 +40,8 @@ export interface RunCycleOptions {
   models: CycleModels;
   /** Present from Phase 2: lets the student author and activate strategies. */
   strategies?: StrategyStore;
+  /** Present from Phase 3: lets the student read the school library. */
+  library?: LibraryAccess;
   maxTurns?: number;
   now?: () => number;
 }
@@ -55,7 +57,7 @@ export async function runCycle(kind: CycleKind, opts: RunCycleOptions): Promise<
     .map((q) => q.title);
   const brain = readBrainState(opts.store, opts.student.id);
 
-  const tools = createStudentTools(ctx, opts.market, opts.strategies);
+  const tools = createStudentTools(ctx, opts.market, opts.strategies, opts.library);
   const model = kind === 'short' ? opts.models.short : opts.models.dailyReview;
 
   let summary = '';
@@ -83,6 +85,8 @@ export async function runCycle(kind: CycleKind, opts: RunCycleOptions): Promise<
         'mcp__academy__market_glance',
         'mcp__academy__test_strategy',
         'mcp__academy__adopt_strategy',
+        'mcp__academy__library_read',
+        'mcp__academy__library_borrow',
       ],
     },
   });

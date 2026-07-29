@@ -14,6 +14,7 @@ import type { Student } from '../core/types.ts';
 import { DEFAULT_ACADEMY } from './academyConfig.ts';
 import { openAcademyDb, SqliteEventStore, StudentStore } from './db/sqliteStore.ts';
 import { StrategyStore } from './db/strategyStore.ts';
+import { buildLibrary, type ClaimRecord } from '../core/school/hive.ts';
 import { runCycle } from './engine/studentAgent.ts';
 import type { CycleKind } from './engine/prompts.ts';
 import { BinancePublicMarketData } from './marketData.ts';
@@ -53,6 +54,27 @@ console.log(
     `(พลังงาน ${student.energy}, สมองมี ${priorEvents} events)...`,
 );
 
+// The library is read fresh each call, so a classmate proving something
+// mid-cycle is visible immediately rather than at the next restart.
+const roster = new Map(students.list().map((s) => [s.id, s.name]));
+const library = {
+  entries: () => {
+    const records: ClaimRecord[] = strategies.allStudents().map((entry) => ({
+      spec: entry.spec,
+      verdict: {
+        studentId: entry.studentId,
+        studentName: roster.get(entry.studentId) ?? entry.studentId,
+        status: 'adopted' as const,
+        alphaPct: 0,
+        confidence: 0,
+        at: entry.at,
+      },
+    }));
+    return buildLibrary(records, { classSize: Math.max(1, roster.size) });
+  },
+  personality: student.personality,
+};
+
 const result = await runCycle(kind, {
   student,
   store,
@@ -60,6 +82,7 @@ const result = await runCycle(kind, {
   metabolism: config.metabolism,
   models: config.models,
   strategies,
+  library,
 });
 
 students.saveEnergy(student.id, result.energyAfter);

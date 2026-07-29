@@ -6,7 +6,10 @@
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 
+import type { LibraryEntry } from '../../core/school/hive.ts';
+import type { PersonalitySeed } from '../../core/types.ts';
 import type { StrategyStore } from '../db/strategyStore.ts';
+import { borrowFromLibrary, readableEntries } from './libraryTool.ts';
 import { adoptStrategy, testStrategy } from './strategyTools.ts';
 
 import {
@@ -91,10 +94,17 @@ const STRATEGY_SPEC_SHAPE = z
   })
   .describe('สูตรเทรดแบบกฎตายตัว');
 
+export interface LibraryAccess {
+  /** Read fresh each call — the library changes as classmates prove things. */
+  entries: () => LibraryEntry[];
+  personality: PersonalitySeed;
+}
+
 export function createStudentTools(
   ctx: GraphOpsContext,
   market: MarketDataProvider,
   strategies?: StrategyStore,
+  library?: LibraryAccess,
 ) {
   return createSdkMcpServer({
     name: 'academy',
@@ -243,6 +253,35 @@ export function createStudentTools(
             return text({ ok: false, errors: ['ยังเปิดใช้สูตรไม่ได้ในโหมดนี้ — ทดสอบได้อย่างเดียว'] });
           }
           return text(await adoptStrategy(ctx, market, strategies, args.spec, args.hypothesisId));
+        }),
+      ),
+      tool(
+        'library_read',
+        'เปิดอ่านห้องสมุดกลางของสถาบัน — ข้ออ้างที่เพื่อนร่วมชั้นทดสอบแล้ว' +
+          ' บอกว่าใครรับ ใครตีตก และยังเถียงกันเรื่องไหนอยู่' +
+          ' (อ่านได้ แต่ยังไม่ใช่หลักฐานของเธอ)',
+        {},
+        safe('library_read', async () => {
+          if (!library) return text({ entries: [], note: 'ห้องสมุดยังไม่เปิดในโหมดนี้' });
+          return text({ entries: readableEntries(library.entries()) });
+        }),
+      ),
+      tool(
+        'library_borrow',
+        'หยิบข้ออ้างจากห้องสมุดมาจดไว้ในสมองเธอ — จะเข้าเป็นความรู้ "ห้องสมุดบอกมา"' +
+          ' ที่ความมั่นใจต่ำ ต้องเอาไปพิสูจน์เองก่อนใช้จริง เหมือนเพื่อนบอกมาทุกประการ',
+        {
+          statement: z.string().describe('ข้อความของข้ออ้างที่เห็นใน library_read'),
+        },
+        safe('library_borrow', async (args) => {
+          if (!library) return text({ ok: false, message: 'ห้องสมุดยังไม่เปิดในโหมดนี้' });
+          const entry = library
+            .entries()
+            .find((e) => e.statement === args.statement || e.statement.startsWith(args.statement.slice(0, 40)));
+          if (!entry) {
+            return text({ ok: false, message: 'ไม่เจอข้ออ้างนี้ในห้องสมุด — ลอง library_read ดูอีกที' });
+          }
+          return text(borrowFromLibrary(ctx, library.personality, entry));
         }),
       ),
     ],
