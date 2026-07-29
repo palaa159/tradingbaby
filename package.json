@@ -8,6 +8,7 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "cycle": "bun src/server/index.ts",
+    "daemon": "bun src/server/daemon.ts",
     "dashboard": "bun src/server/dashboard/server.ts",
     "school": "bun src/server/school.ts",
     "exam": "bun src/server/exam.ts",

@@ -1,13 +1,33 @@
 /**
- * pm2 process definition — publishes the maker dashboard at https://alpha.5lab.co
+ * pm2 process definitions — the school and the window onto it.
  *
  *   pm2 start ecosystem.config.cjs && pm2 save
  *
- * Cloudflare proxies alpha.5lab.co to this host on :443 in "Full" SSL mode, so
- * the origin certificate is self-signed and never validated by Cloudflare.
+ * `alpha-daemon` rings the bells and runs the students' cycles; the box itself
+ * is on UTC, so the daemon is pinned to Asia/Bangkok — the waking window in
+ * the spec is the maker's morning, not Greenwich's.
+ *
+ * `alpha-dashboard` publishes at https://alpha.5lab.co. Cloudflare proxies the
+ * hostname to this host on :443 in "Full" SSL mode, so the origin certificate
+ * is self-signed and never validated by Cloudflare.
+ *
+ * Both open the same academy.db. SQLite is in WAL mode, so the dashboard reads
+ * while the daemon writes.
  */
 module.exports = {
   apps: [
+    {
+      name: 'alpha-daemon',
+      cwd: '/root/tradingbaby',
+      script: '/usr/local/bin/bun',
+      interpreter: 'none',
+      args: ['src/server/daemon.ts', '--db=/root/tradingbaby/academy.db'],
+      env: { TZ: 'Asia/Bangkok' },
+      autorestart: true,
+      restart_delay: 10000,
+      out_file: '/var/log/alpha-daemon.log',
+      error_file: '/var/log/alpha-daemon.log',
+    },
     {
       name: 'alpha-dashboard',
       cwd: '/root/tradingbaby',

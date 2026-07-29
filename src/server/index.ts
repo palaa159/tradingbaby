@@ -6,18 +6,13 @@
  *
  * State lives in academy.db (override with --db=path), so a student's brain
  * and energy carry over between runs. Requires a Claude subscription login;
- * the Agent SDK handles auth.
+ * the Agent SDK handles auth. For the unattended school day, see daemon.ts.
  */
 
 import { replay } from '../core/eventLog.ts';
-import type { Student } from '../core/types.ts';
+import { openAcademy } from './academy.ts';
 import { DEFAULT_ACADEMY } from './academyConfig.ts';
-import { openAcademyDb, SqliteEventStore, StudentStore } from './db/sqliteStore.ts';
-import { StrategyStore } from './db/strategyStore.ts';
-import { buildLibrary, type ClaimRecord } from '../core/school/hive.ts';
-import { runCycle } from './engine/studentAgent.ts';
 import type { CycleKind } from './engine/prompts.ts';
-import { defaultMarketData } from './marketData.ts';
 
 function arg(name: string): string | undefined {
   const prefix = `--${name}=`;
@@ -34,58 +29,16 @@ if (!enrollment) {
   process.exit(1);
 }
 
-const db = openAcademyDb(arg('db') ?? 'academy.db');
-const store = new SqliteEventStore(db);
-const students = new StudentStore(db);
-const strategies = new StrategyStore(db);
-
-const student: Student = students.enroll(
-  enrollment.seed,
-  enrollment.name,
-  config.metabolism.startingAllowance,
-  Date.now(),
-);
-
-const priorEvents = store.count(student.id);
-const market = defaultMarketData(config.universe);
+const academy = openAcademy(config, arg('db') ?? 'academy.db');
+const student = academy.enroll(enrollment.name, enrollment.seed);
+const priorEvents = academy.store.count(student.id);
 
 console.log(
   `🔔 ${student.name} เริ่ม${kind === 'short' ? 'รอบสั้น' : 'รอบทบทวนประจำวัน'} ` +
     `(พลังงาน ${student.energy}, สมองมี ${priorEvents} events)...`,
 );
 
-// The library is read fresh each call, so a classmate proving something
-// mid-cycle is visible immediately rather than at the next restart.
-const roster = new Map(students.list().map((s) => [s.id, s.name]));
-const library = {
-  entries: () => {
-    const records: ClaimRecord[] = strategies.allStudents().map((entry) => ({
-      spec: entry.spec,
-      verdict: {
-        studentId: entry.studentId,
-        studentName: roster.get(entry.studentId) ?? entry.studentId,
-        status: 'adopted' as const,
-        alphaPct: 0,
-        confidence: 0,
-        at: entry.at,
-      },
-    }));
-    return buildLibrary(records, { classSize: Math.max(1, roster.size) });
-  },
-  personality: student.personality,
-};
-
-const result = await runCycle(kind, {
-  student,
-  store,
-  market,
-  metabolism: config.metabolism,
-  models: config.models,
-  strategies,
-  library,
-});
-
-students.saveEnergy(student.id, result.energyAfter);
+const result = await academy.runFor(student, kind);
 
 console.log('\n--- ผลของรอบ ---');
 console.log(result.summary);
@@ -94,12 +47,12 @@ console.log(
     (result.costUsd !== undefined ? ` | cost $${result.costUsd.toFixed(4)}` : ''),
 );
 
-const brain = replay(store.read(student.id));
-const gained = store.count(student.id) - priorEvents;
+const brain = replay(academy.store.read(student.id));
+const gained = academy.store.count(student.id) - priorEvents;
 console.log(`\n🧠 สมองของ${student.name} (+${gained} events รอบนี้):`);
 for (const node of brain.nodes.values()) {
   console.log(`  [${node.kind}] ${node.title} (มั่นใจ ${node.confidence})`);
 }
 console.log(`  เส้นเชื่อม: ${brain.edges.size}`);
 
-db.close();
+academy.db.close();

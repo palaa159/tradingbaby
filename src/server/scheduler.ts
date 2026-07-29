@@ -4,6 +4,7 @@
  * and backs off when the subscription quota pushes back.
  */
 
+import type { CycleLedger } from './db/cycleLedger.ts';
 import type { CycleKind } from './engine/prompts.ts';
 
 export interface SchedulerConfig {
@@ -50,6 +51,32 @@ export function planDay(config: SchedulerConfig): PlannedCycle[] {
   return cycles;
 }
 
+/** Local minute-of-day for a timestamp. Pure: same input, same answer. */
+export function minuteOfDay(at: number): number {
+  const d = new Date(at);
+  return d.getHours() * 60 + d.getMinutes();
+}
+
+/** Local calendar day key — the unit the per-student daily cap is counted in. */
+export function dayKey(at: number): string {
+  const d = new Date(at);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** Milliseconds from `at` until the next local midnight. */
+export function msUntilNextDay(at: number): number {
+  const d = new Date(at);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime() - at;
+}
+
+/**
+ * How late a slot may fire and still count. Long enough that a slow cycle
+ * running past the next bell does not lose it, short enough that a daemon
+ * started at noon does not dump the whole morning at once.
+ */
+const GRACE_MS = 5 * 60_000;
+
 /** Exponential backoff with a cap. attempt starts at 1. */
 export function backoffMs(config: SchedulerConfig, attempt: number): number {
   return Math.min(config.backoffMaxMs, config.backoffBaseMs * 2 ** (attempt - 1));
@@ -68,55 +95,112 @@ export interface SkippedCycle {
   at: number;
 }
 
+export interface BellDeps {
+  runCycle: (student: string, kind: CycleKind) => Promise<void>;
+  ledger: CycleLedger;
+  now: () => number;
+  sleep: (ms: number) => Promise<void>;
+  log?: (line: string) => void;
+}
+
 /**
- * Simple in-process runner: fires planned cycles for each student in turn.
+ * In-process runner: waits for each planned bell, then fires it for every
+ * student that has not had that slot yet today.
+ *
+ * Two rules keep an unattended restart honest. A slot already in the ledger is
+ * left alone, so coming back up mid-day resumes rather than replays. A slot
+ * whose time passed while the school was down is written to the ledger as
+ * missed rather than fired late — otherwise every restart would dump the
+ * backlog at once and blow the daily cap in one burst.
+ *
  * Skipped cycles (quota, errors) are recorded, not silently dropped —
  * "วันนี้หนูได้อยู่เงียบๆ" (spec §10).
  */
 export class AcademyBell {
   readonly skipped: SkippedCycle[] = [];
   private readonly config: SchedulerConfig;
-  private readonly runCycleFn: (student: string, kind: CycleKind) => Promise<void>;
+  private readonly deps: BellDeps;
   private readonly log: (line: string) => void;
 
-  constructor(
-    config: SchedulerConfig,
-    runCycleFn: (student: string, kind: CycleKind) => Promise<void>,
-    log: (line: string) => void = console.log,
-  ) {
+  constructor(config: SchedulerConfig, deps: BellDeps) {
     this.config = config;
-    this.runCycleFn = runCycleFn;
-    this.log = log;
+    this.deps = deps;
+    this.log = deps.log ?? console.log;
   }
 
   /** Run one full planned day for the given students, sequentially. */
-  async runDay(studentIds: string[], now: () => number = Date.now): Promise<void> {
-    const plan = planDay(this.config);
-    for (const cycle of plan) {
-      for (const studentId of studentIds) {
-        let attempt = 1;
-        for (;;) {
-          try {
-            await this.runCycleFn(studentId, cycle.kind);
-            break;
-          } catch (error) {
-            if (isQuotaError(error) && attempt < 5) {
-              const wait = backoffMs(this.config, attempt);
-              this.log(`quota pushback for ${studentId}; backing off ${wait}ms`);
-              await new Promise((resolve) => setTimeout(resolve, wait));
-              attempt += 1;
-              continue;
-            }
-            this.skipped.push({
-              student: studentId,
-              kind: cycle.kind,
-              reason: error instanceof Error ? error.message : String(error),
-              at: now(),
-            });
-            this.log(`cycle skipped for ${studentId} (${cycle.kind}) — วันนี้หนูได้อยู่เงียบๆ`);
-            break;
-          }
+  async runDay(studentIds: string[]): Promise<void> {
+    const { ledger, now, sleep } = this.deps;
+    for (const cycle of planDay(this.config)) {
+      const at = now();
+      const day = dayKey(at);
+      const pending = studentIds.filter(
+        (id) => !ledger.attempted(day, id, cycle.kind, cycle.minuteOfDay),
+      );
+      if (pending.length === 0) continue;
+
+      const waitMs = (cycle.minuteOfDay - minuteOfDay(at)) * 60_000;
+      if (waitMs < -GRACE_MS) {
+        for (const studentId of pending) {
+          ledger.record({
+            studentId,
+            kind: cycle.kind,
+            day,
+            minuteOfDay: cycle.minuteOfDay,
+            status: 'skipped',
+            reason: 'missed — โรงเรียนไม่ได้เปิดตอนถึงคาบ',
+            at,
+          });
         }
+        this.log(`slot ${cycle.minuteOfDay} (${cycle.kind}) missed — school was down`);
+        continue;
+      }
+      if (waitMs > 0) await sleep(waitMs);
+
+      for (const studentId of pending) {
+        await this.fire(studentId, cycle, day);
+      }
+    }
+  }
+
+  /** One student, one slot: retry quota pushback, record whatever happens. */
+  private async fire(studentId: string, cycle: PlannedCycle, day: string): Promise<void> {
+    const { ledger, now, sleep } = this.deps;
+    let attempt = 1;
+    for (;;) {
+      try {
+        await this.deps.runCycle(studentId, cycle.kind);
+        ledger.record({
+          studentId,
+          kind: cycle.kind,
+          day,
+          minuteOfDay: cycle.minuteOfDay,
+          status: 'done',
+          reason: undefined,
+          at: now(),
+        });
+        return;
+      } catch (error) {
+        if (isQuotaError(error) && attempt < 5) {
+          const wait = backoffMs(this.config, attempt);
+          this.log(`quota pushback for ${studentId}; backing off ${wait}ms`);
+          await sleep(wait);
+          attempt += 1;
+          continue;
+        }
+        const reason = error instanceof Error ? error.message : String(error);
+        this.skipped.push({ student: studentId, kind: cycle.kind, reason, at: now() });
+        ledger.record({
+          studentId,
+          kind: cycle.kind,
+          day,
+          minuteOfDay: cycle.minuteOfDay,
+          status: 'skipped',
+          reason,
+          at: now(),
+        });
+        this.log(`cycle skipped for ${studentId} (${cycle.kind}) — วันนี้หนูได้อยู่เงียบๆ`);
+        return;
       }
     }
   }
