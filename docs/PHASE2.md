@@ -23,11 +23,35 @@ versioned rule programs; only this engine executes them, identically every time.
 Still open: a zod schema so student-authored JSON is validated at the tool
 boundary (needed once students actually author specs in P2).
 
-## P2 — Backtest + hypothesis loop
+## P2 — Backtest + hypothesis loop (done)
 
-- [ ] Backtest runner over historical candles using the same evaluator
-- [ ] Hypothesis lifecycle: untested → testing → adopted / debunked, with evidence
-- [ ] Confidence updated from results, never hand-set
+- [x] Backtest runner walking history bar by bar through the *same* evaluator the
+      live engine uses — at bar i the strategy sees only `candles[0..i]`, so there
+      is no lookahead. Fees charged per side; drawdown tracked on equity
+- [x] `buyAndHold()` benchmark over the identical window and fees — the ruler
+      Alpha Score is measured against (spec §7)
+- [x] `judge()` owns confidence: a student cannot hand-set belief, only produce
+      results that move it. Adoption moves confidence halfway toward certainty,
+      never all the way — one good window is not proof
+- [x] Guards that keep verdicts honest: fewer than 5 trades stays `testing`
+      (no evidence, not a failure); a drawdown past 40% debunks regardless of
+      return; beating the market is the bar, not making money
+
+**Measured behaviour** (deterministic synthetic regimes, 400 bars each):
+
+| Market | Strategy | Benchmark | Alpha | Verdict |
+|---|---|---|---|---|
+| Strong uptrend | +5.59% (2 trades) | +121.85% | −116.26% | `testing` — only 2 trades, no sample to judge |
+| Sideways chop | +26.22% (9 trades) | +0.90% | +25.32% | `adopted`, confidence 0.4 → 0.7 |
+
+The dip-buying rule loses badly to doing nothing in a trend and wins clearly in
+chop — the classic mean-reversion lesson, produced by the machinery rather than
+asserted. Note the uptrend case: the strategy barely traded, so the min-trades
+guard correctly refuses to conclude anything from it.
+
+Still open: wiring `judge()` into the student's graph so verdicts update the
+`hypothesis` node's confidence and status with the backtest as linked evidence
+(needs the student-facing tool, arrives with P3).
 
 ## P3 — Paper trading + guardrails
 
