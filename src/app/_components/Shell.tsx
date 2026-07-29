@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { useEffect } from 'react';
 
+import { Footer } from './Footer.tsx';
 import type { StudentCard } from './types.ts';
 import { usePoll } from './usePoll.ts';
 
@@ -92,6 +93,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
         {children}
+        <Footer />
       </main>
     </>
   );

@@ -10,6 +10,7 @@ import { DEFAULT_ACADEMY } from '../academyConfig.ts';
 import { SqliteCycleLedger } from '../db/cycleLedger.ts';
 import { PrincipalLog } from '../db/principalLog.ts';
 import { openAcademyDb, SqliteEventStore, StudentStore } from '../db/sqliteStore.ts';
+import { SdkLog } from '../db/sdkLog.ts';
 import { StrategyStore } from '../db/strategyStore.ts';
 import { TradingStore } from '../db/tradingStore.ts';
 
@@ -22,3 +23,4 @@ export const strategies = new StrategyStore(db);
 export const trading = new TradingStore(db);
 export const ledger = new SqliteCycleLedger(db);
 export const principalLog = new PrincipalLog(db);
+export const sdkLog = new SdkLog(db);

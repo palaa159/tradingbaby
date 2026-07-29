@@ -4,15 +4,14 @@
  * no API key handling here.
  */
 
-import { query } from '@anthropic-ai/claude-agent-sdk';
-
 import { burn, hungerState, type MetabolismConfig } from '../../core/metabolism.ts';
 import type { Student } from '../../core/types.ts';
 import type { EventStore } from '../../core/eventLog.ts';
 import type { StrategyStore } from '../db/strategyStore.ts';
 import { readBrainState } from '../../core/brainState.ts';
-import { effortFor } from './effort.ts';
+import type { SdkLog } from '../db/sdkLog.ts';
 import { curiosityQueue, type GraphOpsContext } from './graphOps.ts';
+import { tracedQuery } from './sdkTrace.ts';
 import { buildSystemPrompt, cyclePrompt, type CycleKind } from './prompts.ts';
 import { createStudentTools, type LibraryAccess } from './tools.ts';
 import type { MarketDataProvider } from '../marketData.ts';
@@ -45,6 +44,8 @@ export interface RunCycleOptions {
   strategies?: StrategyStore;
   /** Present from Phase 3: lets the student read the school library. */
   library?: LibraryAccess;
+  /** Every SDK call is written down when this is present (spec §9.4). */
+  log?: SdkLog | undefined;
   maxTurns?: number;
   now?: () => number;
 }
@@ -66,12 +67,14 @@ export async function runCycle(kind: CycleKind, opts: RunCycleOptions): Promise<
   let summary = '';
   let costUsd: number | undefined;
 
-  const run = query({
+  const run = tracedQuery({
+    caller: kind === 'short' ? 'cycle:short' : 'cycle:daily_review',
+    studentId: opts.student.id,
+    log: opts.log,
     prompt: cyclePrompt(kind),
     options: {
       systemPrompt: buildSystemPrompt(opts.student, hunger, kind, curiosity, brain),
       model,
-      ...effortFor(model),
       maxTurns: opts.maxTurns ?? (kind === 'short' ? 20 : 36),
       // 'default' + allowedTools: whitelisted tools run without prompting,
       // everything else is denied. (bypassPermissions breaks under root.)
@@ -97,14 +100,20 @@ export async function runCycle(kind: CycleKind, opts: RunCycleOptions): Promise<
 
   try {
     for await (const message of run) {
-      if (message.type === 'result') {
-        costUsd = 'total_cost_usd' in message ? message.total_cost_usd : undefined;
+      const m = message as {
+        type: string;
+        subtype?: string;
+        result?: string;
+        total_cost_usd?: number;
+      };
+      if (m.type === 'result') {
+        costUsd = m.total_cost_usd;
         summary =
-          message.subtype === 'success'
-            ? message.result
-            : message.subtype === 'error_max_turns'
+          m.subtype === 'success'
+            ? (m.result ?? '')
+            : m.subtype === 'error_max_turns'
               ? 'หมดเวลาคาบ — สิ่งที่จดไว้ระหว่างรอบถูกบันทึกแล้ว'
-              : `cycle ended without success: ${message.subtype}`;
+              : `cycle ended without success: ${m.subtype}`;
       }
     }
   } catch (error) {

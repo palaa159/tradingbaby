@@ -14,7 +14,7 @@ import { buildLibrary, librarySummary, type ClaimRecord } from '../../core/schoo
 import { alphaReport } from '../../core/trading/benchmark.ts';
 import { portfolioValue } from '../../core/trading/portfolio.ts';
 import { dayKey, minuteOfDay, planDay } from '../scheduler.ts';
-import { config, events, ledger, principalLog, strategies, students, trading } from './context.ts';
+import { config, events, ledger, principalLog, sdkLog, strategies, students, trading } from './context.ts';
 
 function timeBounds(log: readonly GraphEvent[]): { first: number; last: number } {
   const first = log[0]?.at ?? 0;
@@ -162,4 +162,15 @@ export function schedule(at: number) {
 
 export function principalRounds() {
   return { rounds: principalLog.recent(30) };
+}
+
+/**
+ * Every SDK call, in and out. The maker's audit trail for decisions that were
+ * made by a model rather than by code (spec §9.4).
+ */
+export function sdkCalls(studentId: string | null) {
+  return {
+    calls: studentId ? sdkLog.forStudent(studentId, 50) : sdkLog.recent(50),
+    summary: sdkLog.summary(),
+  };
 }

@@ -12,6 +12,7 @@ import type { ExamQuestion, GradedAnswer } from '../core/exam/types.ts';
 import type { Candle } from '../core/strategy/types.ts';
 import type { Student } from '../core/types.ts';
 import { DEFAULT_ACADEMY } from './academyConfig.ts';
+import { SdkLog } from './db/sdkLog.ts';
 import { openAcademyDb, SqliteEventStore, StudentStore } from './db/sqliteStore.ts';
 import type { GraphOpsContext } from './engine/graphOps.ts';
 import { gradeAnswer, sitExam } from './engine/examiner.ts';
@@ -25,6 +26,7 @@ const config = DEFAULT_ACADEMY;
 const db = openAcademyDb(arg('db') ?? 'academy.db');
 const store = new SqliteEventStore(db);
 const students = new StudentStore(db);
+const sdkLog = new SdkLog(db);
 const wanted = Number(arg('questions') ?? 2);
 
 // Questions come from a deterministic synthetic series unless a candle file is
@@ -66,8 +68,8 @@ for (const student of roster) {
   const citations: string[][] = [];
 
   for (const question of paper) {
-    const answer = await sitExam(student, ctx, question, config.models.short);
-    const result = await gradeAnswer(question, answer, config.models.judge);
+    const answer = await sitExam(student, ctx, question, config.models.short, sdkLog);
+    const result = await gradeAnswer(question, answer, config.models.judge, sdkLog);
     graded.push(result);
     citations.push(answer.citedNodeIds);
 

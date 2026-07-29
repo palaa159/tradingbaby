@@ -78,3 +78,18 @@ nav a {
 }
 nav a.on { color: var(--ink); border-bottom-color: var(--accent); }
 aside a { text-decoration: none; color: inherit; display: block; }
+
+/* What is running, and since when — the maker's liveness glance. */
+footer.build {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+  padding: 7px 16px; border-top: 1px solid var(--line);
+  background: var(--panel); color: var(--dim); font-size: 11px;
+}
+footer.build code { color: var(--accent); font-family: ui-monospace, monospace; }
+footer.build .subject {
+  color: var(--ink); max-width: 46vw; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: bottom;
+}
+footer.build .dirty { color: var(--warn); font-weight: 700; }
+footer.build .when { margin-left: auto; }
+footer.build .when ~ .when { margin-left: 0; }

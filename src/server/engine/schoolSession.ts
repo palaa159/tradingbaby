@@ -9,14 +9,13 @@
  * classmate's homework, only their curiosity.
  */
 
-import { query } from '@anthropic-ai/claude-agent-sdk';
-
 import { replay } from '../../core/eventLog.ts';
 import { hearsayConfidence } from '../../core/school/pairing.ts';
 import { describePersonality } from '../../core/personality.ts';
 import type { Student } from '../../core/types.ts';
-import { effortFor } from './effort.ts';
+import type { SdkCaller, SdkLog } from '../db/sdkLog.ts';
 import { addEdge, addNode, searchNodes, type GraphOpsContext } from './graphOps.ts';
+import { tracedQuery } from './sdkTrace.ts';
 
 export interface SessionResult {
   a: string;
@@ -40,24 +39,32 @@ function talkingPoints(ctx: GraphOpsContext): string {
     .join('\n');
 }
 
-async function ask(prompt: string, system: string, model: string): Promise<{ text: string; cost?: number }> {
+async function ask(
+  prompt: string,
+  system: string,
+  model: string,
+  trace: { caller: SdkCaller; studentId: string; log?: SdkLog | undefined },
+): Promise<{ text: string; cost?: number }> {
   let text = '';
   let cost: number | undefined;
-  const run = query({
+  const run = tracedQuery({
+    caller: trace.caller,
+    studentId: trace.studentId,
+    log: trace.log,
     prompt,
     options: {
       systemPrompt: system,
       model,
-      ...effortFor(model),
       maxTurns: 1,
       permissionMode: 'default',
       allowedTools: [],
     },
   });
   for await (const message of run) {
-    if (message.type === 'result') {
-      cost = 'total_cost_usd' in message ? message.total_cost_usd : undefined;
-      if (message.subtype === 'success') text = message.result;
+    const m = message as { type: string; subtype?: string; result?: string; total_cost_usd?: number };
+    if (m.type === 'result') {
+      cost = m.total_cost_usd;
+      if (m.subtype === 'success') text = m.result ?? '';
     }
   }
   return cost === undefined ? { text } : { text, cost };
@@ -109,6 +116,7 @@ export interface SessionOptions {
   ctxA: GraphOpsContext;
   ctxB: GraphOpsContext;
   model: string;
+  log?: SdkLog | undefined;
 }
 
 /**
@@ -126,6 +134,7 @@ export async function runSession(opts: SessionOptions): Promise<SessionResult> {
     `สิ่งที่เธอจดไว้:\n${talkingPoints(ctxA)}\n\nเล่าให้เพื่อนฟัง`,
     shareSystem(a),
     opts.model,
+    { caller: 'school:share', studentId: a.id, log: opts.log },
   );
   bump(shareA.cost);
 
@@ -133,12 +142,21 @@ export async function runSession(opts: SessionOptions): Promise<SessionResult> {
     `สิ่งที่เธอจดไว้:\n${talkingPoints(ctxB)}\n\nเล่าให้เพื่อนฟัง`,
     shareSystem(b),
     opts.model,
+    { caller: 'school:share', studentId: b.id, log: opts.log },
   );
   bump(shareB.cost);
 
-  const heardByB = await ask(`${a.name} เล่าว่า:\n${shareA.text}`, listenSystem(b), opts.model);
+  const heardByB = await ask(`${a.name} เล่าว่า:\n${shareA.text}`, listenSystem(b), opts.model, {
+    caller: 'school:listen',
+    studentId: b.id,
+    log: opts.log,
+  });
   bump(heardByB.cost);
-  const heardByA = await ask(`${b.name} เล่าว่า:\n${shareB.text}`, listenSystem(a), opts.model);
+  const heardByA = await ask(`${b.name} เล่าว่า:\n${shareB.text}`, listenSystem(a), opts.model, {
+    caller: 'school:listen',
+    studentId: a.id,
+    log: opts.log,
+  });
   bump(heardByA.cost);
 
   const parsedB = parseTake(heardByB.text);

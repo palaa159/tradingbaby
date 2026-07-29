@@ -12,6 +12,7 @@
 import { pairFor } from '../core/school/pairing.ts';
 import type { Student } from '../core/types.ts';
 import { DEFAULT_ACADEMY } from './academyConfig.ts';
+import { SdkLog } from './db/sdkLog.ts';
 import { openAcademyDb, SqliteEventStore, StudentStore } from './db/sqliteStore.ts';
 import type { GraphOpsContext } from './engine/graphOps.ts';
 import { hearsayCount, runSession } from './engine/schoolSession.ts';
@@ -25,6 +26,7 @@ const config = DEFAULT_ACADEMY;
 const db = openAcademyDb(arg('db') ?? 'academy.db');
 const store = new SqliteEventStore(db);
 const students = new StudentStore(db);
+const sdkLog = new SdkLog(db);
 const day = Number(arg('day') ?? 0);
 
 // Every configured student attends, enrolling on first sight.
@@ -56,6 +58,7 @@ for (const pair of pairs) {
     ctxA: ctxFor(a.id),
     ctxB: ctxFor(b.id),
     model: config.models.short,
+    log: sdkLog,
   });
 
   console.log(result.transcript.split('\n').map((line) => `  ${line}`).join('\n'));

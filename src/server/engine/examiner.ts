@@ -7,8 +7,6 @@
  * so it grades the argument rather than the arguer.
  */
 
-import { query } from '@anthropic-ai/claude-agent-sdk';
-
 import { combineScores, scoreAction, bestAction } from '../../core/exam/exam.ts';
 import type {
   Action,
@@ -19,24 +17,33 @@ import type {
 } from '../../core/exam/types.ts';
 import { describePersonality } from '../../core/personality.ts';
 import type { Student } from '../../core/types.ts';
-import { effortFor } from './effort.ts';
+import type { SdkCaller, SdkLog } from '../db/sdkLog.ts';
 import { searchNodes, type GraphOpsContext } from './graphOps.ts';
+import { tracedQuery } from './sdkTrace.ts';
 
-async function ask(prompt: string, system: string, model: string): Promise<string> {
+async function ask(
+  prompt: string,
+  system: string,
+  model: string,
+  trace: { caller: SdkCaller; studentId?: string | undefined; log?: SdkLog | undefined },
+): Promise<string> {
   let text = '';
-  const run = query({
+  const run = tracedQuery({
+    caller: trace.caller,
+    studentId: trace.studentId,
+    log: trace.log,
     prompt,
     options: {
       systemPrompt: system,
       model,
-      ...effortFor(model),
       maxTurns: 1,
       permissionMode: 'default',
       allowedTools: [],
     },
   });
   for await (const message of run) {
-    if (message.type === 'result' && message.subtype === 'success') text = message.result;
+    const m = message as { type: string; subtype?: string; result?: string };
+    if (m.type === 'result' && m.subtype === 'success') text = m.result ?? '';
   }
   return text;
 }
@@ -102,6 +109,7 @@ export async function sitExam(
   ctx: GraphOpsContext,
   question: ExamQuestion,
   model: string,
+  log?: SdkLog,
 ): Promise<ExamAnswer> {
   const notes = searchNodes(ctx, { limit: 60 })
     .filter((n) => ['concept', 'lesson', 'hypothesis'].includes(n.kind))
@@ -133,6 +141,7 @@ export async function sitExam(
     `${describeChart(question)}\n\nความรู้ที่เธอจดไว้:\n${notesText}\n\nตอนนี้เธอจะทำอะไร เพราะอะไร`,
     system,
     model,
+    { caller: 'exam:sit', studentId: student.id, log },
   );
 
   const parsed = extractJson(text);
@@ -157,6 +166,7 @@ export async function gradeAnswer(
   question: ExamQuestion,
   answer: ExamAnswer,
   model: string,
+  log?: SdkLog,
 ): Promise<GradedAnswer> {
   const outcomeScore = scoreAction(answer.action, question);
   const best = bestAction(question);
@@ -182,6 +192,7 @@ export async function gradeAnswer(
     ].join('\n'),
     system,
     model,
+    { caller: 'exam:grade', studentId: answer.studentId, log },
   );
 
   const parsed = extractJson(text);

@@ -13,6 +13,7 @@ import { buildLibrary, type ClaimRecord } from '../core/school/hive.ts';
 import type { Student } from '../core/types.ts';
 import type { AcademyConfig } from './academyConfig.ts';
 import { openAcademyDb, SqliteEventStore, StudentStore } from './db/sqliteStore.ts';
+import { SdkLog } from './db/sdkLog.ts';
 import { StrategyStore } from './db/strategyStore.ts';
 import type { CycleKind } from './engine/prompts.ts';
 import { runCycle, type CycleResult } from './engine/studentAgent.ts';
@@ -32,6 +33,7 @@ export function openAcademy(config: AcademyConfig, dbPath: string): Academy {
   const store = new SqliteEventStore(db);
   const students = new StudentStore(db);
   const strategies = new StrategyStore(db);
+  const sdkLog = new SdkLog(db);
   const market = defaultMarketData(config.universe);
 
   const enroll = (name: string, seed: string): Student =>
@@ -68,6 +70,7 @@ export function openAcademy(config: AcademyConfig, dbPath: string): Academy {
       models: config.models,
       strategies,
       library,
+      log: sdkLog,
     });
     students.saveEnergy(student.id, result.energyAfter);
     return result;
