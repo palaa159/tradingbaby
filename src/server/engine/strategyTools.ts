@@ -23,6 +23,8 @@ import { addEdge, addNode, searchNodes, updateNode, type GraphOpsContext } from 
 export interface TestOutcome {
   ok: boolean;
   errors?: string[];
+  /** A spec that would have validated — shown with every rejection. */
+  example?: unknown;
   warnings?: string[];
   perSymbol?: {
     symbol: string;
@@ -67,7 +69,7 @@ export async function testStrategy(
   hypothesisId: string | undefined,
 ): Promise<TestOutcome> {
   const parsed = validateSpec(raw);
-  if (!parsed.ok) return { ok: false, errors: parsed.errors };
+  if (!parsed.ok) return { ok: false, errors: parsed.errors, example: parsed.example };
 
   const warnings = reviewSpec(parsed.spec, [...market.universe()]);
   const spec: StrategySpec = parsed.spec;
@@ -187,7 +189,7 @@ export async function adoptStrategy(
   }
 
   const parsed = validateSpec(raw);
-  if (!parsed.ok) return { ok: false, errors: parsed.errors };
+  if (!parsed.ok) return { ok: false, errors: parsed.errors, example: parsed.example };
 
   const at = ctx.now();
   const activated = strategies.activate(

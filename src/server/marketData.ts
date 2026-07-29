@@ -70,12 +70,16 @@ export class StubMarketData implements MarketDataProvider {
 /**
  * Free Binance public REST API (no key needed). ccxt can replace this later
  * behind the same interface without touching the engine.
+ *
+ * The base URL is a constructor argument because `api.binance.com` answers 451
+ * from some regions — the `.us` host speaks the identical API and is the usual
+ * way out of that.
  */
 export class BinancePublicMarketData implements MarketDataProvider {
   private readonly symbols: readonly string[];
   private readonly baseUrl: string;
 
-  constructor(symbols: readonly string[], baseUrl = 'https://api.binance.com') {
+  constructor(symbols: readonly string[], baseUrl = 'https://api.binance.us') {
     this.symbols = symbols;
     this.baseUrl = baseUrl;
   }
@@ -126,4 +130,127 @@ export class BinancePublicMarketData implements MarketDataProvider {
       fetchedAt: Date.now(),
     };
   }
+}
+
+/**
+ * Kraken's free OHLC API — a second venue, so one exchange refusing to answer
+ * cannot stop the whole school from measuring anything.
+ *
+ * The snapshot is derived from the same candles rather than a separate ticker
+ * call: fewer endpoints to be wrong about, and the price a student sees then
+ * always matches the last bar it is reasoning over.
+ */
+export class KrakenPublicMarketData implements MarketDataProvider {
+  private readonly symbols: readonly string[];
+  private readonly baseUrl: string;
+
+  constructor(symbols: readonly string[], baseUrl = 'https://api.kraken.com') {
+    this.symbols = symbols;
+    this.baseUrl = baseUrl;
+  }
+
+  universe(): readonly string[] {
+    return this.symbols;
+  }
+
+  /** Kraken still calls bitcoin XBT. */
+  private pair(symbol: string): string {
+    return symbol.replace('/', '').replace(/^BTC/, 'XBT');
+  }
+
+  async history(symbol: string, bars: number): Promise<Candle[]> {
+    const res = await fetch(`${this.baseUrl}/0/public/OHLC?pair=${this.pair(symbol)}&interval=60`);
+    if (!res.ok) throw new Error(`kraken history failed for ${symbol}: ${res.status}`);
+    const body = (await res.json()) as {
+      error: string[];
+      result: Record<string, [number, string, string, string, string, string, string, number][]>;
+    };
+    if (body.error?.length) throw new Error(`kraken history failed for ${symbol}: ${body.error.join(', ')}`);
+
+    // Kraken answers under its own name for the pair, which is not always the
+    // one asked for, so take the series rather than guessing the key.
+    const rows = Object.entries(body.result ?? {}).find(([key]) => key !== 'last')?.[1];
+    if (!rows?.length) throw new Error(`kraken returned no candles for ${symbol}`);
+
+    return rows.slice(-bars).map((row) => ({
+      openTime: row[0] * 1000,
+      open: Number(row[1]),
+      high: Number(row[2]),
+      low: Number(row[3]),
+      close: Number(row[4]),
+      volume: Number(row[6]),
+    }));
+  }
+
+  async snapshot(symbol: string): Promise<MarketSnapshot> {
+    const candles = await this.history(symbol, 48);
+    const last = candles[candles.length - 1] as Candle;
+    const dayAgo = candles[Math.max(0, candles.length - 25)] as Candle;
+    return {
+      symbol,
+      price: last.close,
+      changePct24h: dayAgo.close > 0 ? ((last.close - dayAgo.close) / dayAgo.close) * 100 : 0,
+      candles1h: candles,
+      fetchedAt: Date.now(),
+    };
+  }
+}
+
+/**
+ * Try each venue in turn and use the first that answers.
+ *
+ * A live student found why this is needed: `test_strategy` died on "socket
+ * connection closed" four times running, and with no data there is nothing to
+ * measure — which stops Learn, Build, Measure, Repeat dead at the third beat.
+ * One exchange being unreachable from wherever the school happens to be running
+ * should not be able to do that.
+ *
+ * The venue that worked is remembered and tried first next time, so the common
+ * case costs one request rather than one per dead venue.
+ */
+export class FallbackMarketData implements MarketDataProvider {
+  private readonly providers: readonly MarketDataProvider[];
+  private preferred = 0;
+
+  constructor(providers: readonly MarketDataProvider[]) {
+    if (providers.length === 0) throw new Error('FallbackMarketData needs at least one provider');
+    this.providers = providers;
+  }
+
+  universe(): readonly string[] {
+    return (this.providers[0] as MarketDataProvider).universe();
+  }
+
+  private async attempt<T>(what: string, run: (p: MarketDataProvider) => Promise<T>): Promise<T> {
+    const failures: string[] = [];
+    for (let i = 0; i < this.providers.length; i++) {
+      const index = (this.preferred + i) % this.providers.length;
+      const provider = this.providers[index] as MarketDataProvider;
+      try {
+        const result = await run(provider);
+        this.preferred = index;
+        return result;
+      } catch (error) {
+        failures.push(`${provider.constructor.name}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    throw new Error(`ดึงข้อมูลตลาดไม่ได้เลยสักเจ้า (${what})\n${failures.join('\n')}`);
+  }
+
+  history(symbol: string, bars: number): Promise<Candle[]> {
+    return this.attempt(`history ${symbol}`, (p) => p.history(symbol, bars));
+  }
+
+  snapshot(symbol: string): Promise<MarketSnapshot> {
+    return this.attempt(`snapshot ${symbol}`, (p) => p.snapshot(symbol));
+  }
+}
+
+/** The venues the academy reads, in the order it tries them. */
+export function defaultMarketData(symbols: readonly string[]): MarketDataProvider {
+  return new FallbackMarketData([
+    new BinancePublicMarketData(symbols),
+    new KrakenPublicMarketData(symbols),
+    new BinancePublicMarketData(symbols, 'https://api.binance.com'),
+  ]);
 }
