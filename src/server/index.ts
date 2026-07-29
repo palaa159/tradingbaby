@@ -17,7 +17,7 @@ import { StrategyStore } from './db/strategyStore.ts';
 import { buildLibrary, type ClaimRecord } from '../core/school/hive.ts';
 import { runCycle } from './engine/studentAgent.ts';
 import type { CycleKind } from './engine/prompts.ts';
-import { BinancePublicMarketData } from './marketData.ts';
+import { defaultMarketData } from './marketData.ts';
 
 function arg(name: string): string | undefined {
   const prefix = `--${name}=`;
@@ -47,7 +47,7 @@ const student: Student = students.enroll(
 );
 
 const priorEvents = store.count(student.id);
-const market = new BinancePublicMarketData(config.universe);
+const market = defaultMarketData(config.universe);
 
 console.log(
   `🔔 ${student.name} เริ่ม${kind === 'short' ? 'รอบสั้น' : 'รอบทบทวนประจำวัน'} ` +

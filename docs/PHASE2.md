@@ -581,3 +581,53 @@ Timeframe is the other half of the maker's question. It is already a spec field
 and part of the library key, so students can compare `1h` against `4h` today by
 testing both — but nothing yet *sweeps* timeframes for them. That is the next
 piece.
+
+## H5 — Two things a live student found, both blocking
+
+A fresh student's first daily review, run against the merged H4 build. The
+prompt changes landed — unprompted, she asked *"short คืออะไรกันแน่ เสี่ยงกว่า
+long ยังไง"* and *"ตลาดขาขึ้น ขาลง ออกข้าง วัดยังไงว่าอยู่ช่วงไหน"*, which are
+exactly the two ideas H4 introduced. Then she hit two walls and got nothing
+measured.
+
+### "Invalid input" is not a lesson
+
+She sent a malformed spec **nine times**, got `entry.0.left: Invalid input` each
+time, and eventually gave up and read `src/core/strategy/schema.ts` to work out
+the operand shape. She then wrote it up as a lesson at confidence 0.9 — the
+correct response, and a damning one.
+
+That file's own docstring says malformed input *"must die here with a message
+the student can learn from"*. Zod reports a failed union as "Invalid input",
+which names nothing. Fixed two ways: operand and condition paths now explain the
+shape they wanted, and **every rejection carries a spec that would have
+validated**. A test asserts no error ever ends in "Invalid input", and another
+asserts the bundled example actually parses — an example that drifts out of date
+is worse than none.
+
+### One unreachable exchange stops the whole school
+
+`test_strategy` then died four times on "socket connection closed". With no
+candles there is nothing to backtest, which halts Learn → Build → **Measure** →
+Repeat at the third beat for every student at once.
+
+`api.binance.com` answers **451** from this region. Added `KrakenPublicMarketData`
+as a second venue and `FallbackMarketData`, which tries venues in order and
+remembers which one answered so a known-dead venue is not re-tried every call.
+The default chain is Binance.US → Kraken → Binance.com.
+
+**Honest limitation:** in the current sandbox this still does not fetch. `curl`
+reaches all three venues; Bun's `fetch` reaches none of them, through the proxy
+or around it. That is a Bun/proxy incompatibility in this container rather than
+anything in this code, and it should not survive the move to a real VM. The
+fallback chain is tested against injected failures rather than the live network,
+so it is verified either way — but **no live backtest has run yet**, and until
+one does, the regime split from H4 is only proven against synthetic series.
+
+### The recurring lesson, third sighting
+
+P9, H3, and now H5 are the same shape: the machinery worked and the student
+still could not use it. Twice it was a prompt that never mentioned the tool.
+This time it was a tool that would not say what it wanted. **The engine being
+correct is not the same as the engine being usable**, and only a live run has
+ever caught the difference.

@@ -61,7 +61,54 @@ export const strategySpecSchema = z
 
 export type ValidationResult =
   | { ok: true; spec: z.infer<typeof strategySpecSchema> }
-  | { ok: false; errors: string[] };
+  | { ok: false; errors: string[]; example: unknown };
+
+/**
+ * A spec that validates, handed back with every rejection.
+ *
+ * A live student spent nine attempts and most of a cycle guessing the operand
+ * shape from "Invalid input", then gave up and read this file's source. Showing
+ * the answer costs a few lines and saves the student's whole budget.
+ */
+const WORKING_EXAMPLE = {
+  name: 'rsi-dip',
+  symbols: ['BTC/USDT'],
+  timeframe: '1h',
+  direction: 'long',
+  entry: [
+    {
+      left: { kind: 'indicator', name: 'rsi', period: 14 },
+      op: '<',
+      right: { kind: 'number', value: 30 },
+    },
+  ],
+  exit: [
+    {
+      left: { kind: 'indicator', name: 'rsi', period: 14 },
+      op: '>',
+      right: { kind: 'number', value: 70 },
+    },
+  ],
+  sizePct: 20,
+};
+
+const OPERAND_HELP =
+  'ทั้งสองข้างของเงื่อนไขต้องเป็นวัตถุ ไม่ใช่ชื่อเปล่าหรือตัวเลขเปล่า — ' +
+  'ใช้ {"kind":"indicator","name":"rsi","period":14} หรือ {"kind":"number","value":30}';
+
+/**
+ * Zod reports a failed union as "Invalid input", which tells the student
+ * nothing about the shape it wanted. Where the path says which shape was meant,
+ * say so.
+ */
+function explain(path: string, message: string): string {
+  if (message !== 'Invalid input') return message;
+  if (/^(entry|exit)\.\d+\.(left|right)$/.test(path)) return OPERAND_HELP;
+  if (/^(entry|exit)\.\d+$/.test(path)) {
+    return 'เงื่อนไขหนึ่งข้อต้องเป็น {"left":…, "op":"<"|"<="|">"|">="|"crosses_above"|"crosses_below", "right":…}';
+  }
+  return message;
+}
 
 export function validateSpec(input: unknown): ValidationResult {
   const parsed = strategySpecSchema.safeParse(input);
@@ -70,8 +117,10 @@ export function validateSpec(input: unknown): ValidationResult {
     ok: false,
     errors: parsed.error.issues.map((issue) => {
       const path = issue.path.join('.');
-      return path ? `${path}: ${issue.message}` : issue.message;
+      const message = explain(path, issue.message);
+      return path ? `${path}: ${message}` : message;
     }),
+    example: WORKING_EXAMPLE,
   };
 }
 
