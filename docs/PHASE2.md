@@ -84,10 +84,29 @@ Still open: wiring `judge()` into the student's graph so verdicts update the
 The strategy lost money, and the system says so — no flattery. That is exactly
 the input `judge()` needs to debunk it.
 
-## P4 — Metabolism v2
+## P4 — Metabolism v2 (done)
 
-- [ ] Realized P&L feeds energy; suspension enabled
-- [ ] Guaranteed minimum daily cycle so a starving student can eat its way back
+- [x] `settle()` turns realized P&L into energy, counting only what was booked
+      since the last settlement — a student cannot farm energy by having its
+      books read twice
+- [x] Suspension enabled (`suspensionEnabled: true` from this phase): at zero
+      energy, strategies are retired and holdings closed at last known price so
+      nothing drifts unattended. **The knowledge graph is never touched** —
+      a suspended student keeps every note, edge, and diary entry
+- [x] Only the maker can `revive()` a student, never the student itself (spec §3.4)
+- [x] `cycleBudget()` makes hunger cost thinking: well-fed gets the full budget,
+      hungry gets half, starving gets `MIN_DAILY_CYCLES` — never zero while alive
+
+**Measured** — the two paths that matter:
+
+| Losing streak | Recovery from near-death |
+|---|---|
+| 900 → 740 → 580 → **420 hungry (2 cycles)** → 260 → **100 starving (1 cycle)** → **0 suspended** | 100 → 60 → **20 starving (still 1 cycle)** → 100 → **220 hungry** → 420 |
+
+The second column is the point. At 20 energy the student still got a cycle, and
+its active strategies kept trading at zero AI cost, so good rules could feed it
+back to health. Without the floor, hunger would remove the very ability to fix
+the strategies causing the hunger — pressure with no exit is just a trap.
 
 ## P5 — Benchmark bot + Alpha Score
 
