@@ -5,6 +5,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 
 import type { Brain, GraphNode } from '../_components/types';
 import { Button } from '@/components/ui/button';
+import { Slider } from '@/components/ui/slider';
 import { fmt, KIND } from '../_components/types';
 
 interface Point {
@@ -309,17 +310,16 @@ function BrainView() {
       ) : null}
 
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border px-3 py-2">
-        <Button variant="secondary" size="sm" onClick={() => void play()}>
+        <Button variant="secondary" size="sm" className="min-h-9" onClick={() => void play()}>
           {playing ? '⏸ หยุด' : '▶ เล่นย้อนหนัง'}
         </Button>
-        <input
-          type="range"
+        <Slider
           min={0}
           max={100}
-          value={pct}
+          value={[pct]}
           aria-label="เลื่อนเวลา"
-          onChange={(e) => scrub(Number(e.target.value))}
-          className="h-9 min-w-32 flex-1 accent-primary"
+          onValueChange={(v) => scrub(Array.isArray(v) ? (v[0] ?? pct) : v)}
+          className="min-w-32 flex-1"
         />
         <span className="w-full text-[11px] text-muted-foreground md:w-auto">
           {live ? (

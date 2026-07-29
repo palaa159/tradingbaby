@@ -47,6 +47,11 @@ test('an all-green change stays green', () => {
   assert.equal(green.zone, 'green');
 });
 
+test('the screen and its primitives are both green — the Designer edits both', () => {
+  const ui = classifyChange(['src/app/brain/page.tsx', 'src/components/ui/slider.tsx']);
+  assert.equal(ui.zone, 'green');
+});
+
 test('red is refused outright, whatever the policy says', () => {
   const red = classifyChange(['src/core/eventLog.ts']);
   const permissive = { autoMergeGreen: true };

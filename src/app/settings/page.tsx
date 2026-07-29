@@ -133,10 +133,10 @@ export default function Page() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => void save()} disabled={busy}>
+            <Button className="min-h-9" onClick={() => void save()} disabled={busy}>
               บันทึก
             </Button>
-            <Button variant="secondary" onClick={() => setDraft(view.defaults)} disabled={busy}>
+            <Button variant="secondary" className="min-h-9" onClick={() => setDraft(view.defaults)} disabled={busy}>
               กลับไปค่าเริ่มต้น
             </Button>
           </div>

@@ -78,13 +78,13 @@ export default function Page() {
         <CardContent className="flex flex-col gap-3 px-3 md:flex-row md:items-end">
           <div className="flex-1">
             <Label htmlFor="name" className="text-[11px]">ชื่อ</Label>
-            <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="เช่น มะลิ" />
+            <Input id="name" className="min-h-9" value={name} onChange={(e) => setName(e.target.value)} placeholder="เช่น มะลิ" />
           </div>
           <div className="flex-1">
             <Label htmlFor="seed" className="text-[11px]">เมล็ดนิสัย</Label>
-            <Input id="seed" value={seed} onChange={(e) => setSeed(e.target.value)} placeholder="เช่น mali-2026" />
+            <Input id="seed" className="min-h-9" value={seed} onChange={(e) => setSeed(e.target.value)} placeholder="เช่น mali-2026" />
           </div>
-          <Button onClick={() => void enroll()} disabled={busy} className="md:w-auto">
+          <Button onClick={() => void enroll()} disabled={busy} className="min-h-9 md:w-auto">
             รับเข้าเรียน
           </Button>
         </CardContent>

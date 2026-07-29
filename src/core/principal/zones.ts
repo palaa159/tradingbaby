@@ -72,6 +72,11 @@ export const ZONE_RULES: ZoneRule[] = [
   // The screen moved to Next.js; without this the whole UI would fall through
   // to the unrecognised-file rule and quietly become yellow.
   { pattern: /^src\/app\//, zone: 'green', reason: 'หน้าจอของคนสร้าง' },
+  // Generated presentational primitives — same risk class as the screen that
+  // uses them. Widened by the maker after the Designer was told it could edit
+  // these and then had a whole round reverted for doing exactly that; an agent
+  // may never widen this itself (that is why core/principal is red).
+  { pattern: /^src\/components\/ui\//, zone: 'green', reason: 'ชิ้นส่วนหน้าจอสำเร็จรูป' },
   { pattern: /server\/engine\/(tools|prompts)\.ts$/, zone: 'green', reason: 'เครื่องมือและคำสั่งของนักเรียน' },
   { pattern: /server\/marketData\.ts$/, zone: 'green', reason: 'ท่อข้อมูลตลาด' },
   { pattern: /\.test\.ts$/, zone: 'green', reason: 'ชุดทดสอบ' },
