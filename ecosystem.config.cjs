@@ -7,6 +7,10 @@
  * is on UTC, so the daemon is pinned to Asia/Bangkok — the waking window in
  * the spec is the maker's morning, not Greenwich's.
  *
+ * `alpha-trader` runs the adopted strategies on the candle clock. It is a
+ * separate process on purpose: thinking is rationed by the subscription quota,
+ * trading costs no AI at all, so a student out of energy keeps earning.
+ *
  * `alpha-dashboard` publishes at https://alpha.5lab.co. Cloudflare proxies the
  * hostname to this host on :443 in "Full" SSL mode, so the origin certificate
  * is self-signed and never validated by Cloudflare.
@@ -27,6 +31,18 @@ module.exports = {
       restart_delay: 10000,
       out_file: '/var/log/alpha-daemon.log',
       error_file: '/var/log/alpha-daemon.log',
+    },
+    {
+      name: 'alpha-trader',
+      cwd: '/root/tradingbaby',
+      script: '/usr/local/bin/bun',
+      interpreter: 'none',
+      args: ['src/server/trader.ts', '--db=/root/tradingbaby/academy.db'],
+      env: { TZ: 'Asia/Bangkok' },
+      autorestart: true,
+      restart_delay: 10000,
+      out_file: '/var/log/alpha-trader.log',
+      error_file: '/var/log/alpha-trader.log',
     },
     {
       name: 'alpha-dashboard',

@@ -16,6 +16,7 @@ import { DEFAULT_ACADEMY } from './academyConfig.ts';
 import { SqliteCycleLedger } from './db/cycleLedger.ts';
 import type { CycleKind } from './engine/prompts.ts';
 import { AcademyBell, dayKey, msUntilNextDay } from './scheduler.ts';
+import { Metabolism } from './trading/settlement.ts';
 
 function arg(name: string): string | undefined {
   const prefix = `--${name}=`;
@@ -25,6 +26,7 @@ function arg(name: string): string | undefined {
 const config = DEFAULT_ACADEMY;
 const academy = openAcademy(config, arg('db') ?? 'academy.db');
 const ledger = new SqliteCycleLedger(academy.db);
+const metabolism = new Metabolism(academy.db, config.metabolism);
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -38,6 +40,9 @@ const byId = new Map(roster.map((s) => [s.id, s]));
 async function runOne(studentId: string, kind: CycleKind): Promise<void> {
   const known = byId.get(studentId);
   if (!known) throw new Error(`unknown student: ${studentId}`);
+  // Suspension is what makes the energy real: no thinking until the maker
+  // revives them. The bell writes the reason to the ledger.
+  if (metabolism.isSuspended(studentId)) throw new Error('พักการเรียนอยู่ — รอคนสร้างให้กลับมาเรียน');
   // Reload: energy is mutable state and the cycle budget depends on it.
   const student = academy.enroll(known.name, known.id);
   const result = await academy.runFor(student, kind);

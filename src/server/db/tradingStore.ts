@@ -72,6 +72,15 @@ export function migrateTradingTables(db: Database): void {
   `);
   db.run('CREATE INDEX IF NOT EXISTS fills_student ON fills (student_id, id)');
   db.run(`
+    CREATE TABLE IF NOT EXISTS day_open_values (
+      student_id TEXT NOT NULL,
+      day TEXT NOT NULL,
+      value REAL NOT NULL,
+      at INTEGER NOT NULL,
+      PRIMARY KEY (student_id, day)
+    )
+  `);
+  db.run(`
     CREATE TABLE IF NOT EXISTS blocked_orders (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       student_id TEXT NOT NULL,
@@ -194,6 +203,28 @@ export class TradingStore {
       .query<{ symbol: string; price: number }, []>('SELECT symbol, price FROM price_marks')
       .all();
     return Object.fromEntries(rows.map((r) => [r.symbol, r.price]));
+  }
+
+  /**
+   * The portfolio value the day opened at, written once per student per day.
+   * The daily-loss rule is measured against it, so it has to outlive the
+   * process — a restart that re-seeded it would hand back a fresh loss budget
+   * and let a bad day keep going.
+   */
+  dayOpenValueOnce(studentId: string, day: string, value: number, at: number): number {
+    const existing = this.db
+      .query<{ value: number }, [string, string]>(
+        'SELECT value FROM day_open_values WHERE student_id = ? AND day = ?',
+      )
+      .get(studentId, day);
+    if (existing) return existing.value;
+    this.db.run('INSERT INTO day_open_values (student_id, day, value, at) VALUES (?, ?, ?, ?)', [
+      studentId,
+      day,
+      value,
+      at,
+    ]);
+    return value;
   }
 
   /** Open the benchmark once; later calls are no-ops so the ruler never moves. */

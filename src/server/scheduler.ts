@@ -64,6 +64,15 @@ export function dayKey(at: number): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+/**
+ * Milliseconds until shortly after the next hourly candle closes. The offset
+ * gives the exchange a moment to publish the finished bar.
+ */
+export function msUntilNextBar(at: number, offsetMs = 60_000): number {
+  const hour = 3_600_000;
+  return Math.ceil((at + 1) / hour) * hour + offsetMs - at;
+}
+
 /** Milliseconds from `at` until the next local midnight. */
 export function msUntilNextDay(at: number): number {
   const d = new Date(at);

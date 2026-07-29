@@ -4,6 +4,7 @@
  */
 
 import { DEFAULT_METABOLISM, type MetabolismConfig } from '../core/metabolism.ts';
+import { DEFAULT_GUARDRAILS, type GuardrailConfig } from '../core/trading/guardrails.ts';
 import { DEFAULT_SCHEDULE, type SchedulerConfig } from './scheduler.ts';
 import type { CycleModels } from './engine/studentAgent.ts';
 
@@ -13,6 +14,15 @@ export interface EnrollmentConfig {
   seed: string;
 }
 
+/** What the strategy runner needs. No AI in this path, so none of it is a model. */
+export interface TradingConfig {
+  /** House rules (spec §6.1) — the maker's, never the student's. */
+  guardrails: GuardrailConfig;
+  feeRate: number;
+  /** Candles pulled per symbol per round; enough for the longest indicator window. */
+  historyBars: number;
+}
+
 export interface AcademyConfig {
   students: EnrollmentConfig[];
   /** Maker-configured safe universe (spec §6). */
@@ -20,6 +30,7 @@ export interface AcademyConfig {
   metabolism: MetabolismConfig;
   schedule: SchedulerConfig;
   models: CycleModels;
+  trading: TradingConfig;
 }
 
 export const DEFAULT_ACADEMY: AcademyConfig = {
@@ -37,5 +48,10 @@ export const DEFAULT_ACADEMY: AcademyConfig = {
     short: 'claude-haiku-4-5',
     dailyReview: 'claude-sonnet-5',
     judge: 'claude-opus-5',
+  },
+  trading: {
+    guardrails: DEFAULT_GUARDRAILS,
+    feeRate: 0.001,
+    historyBars: 200,
   },
 };

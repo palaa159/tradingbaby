@@ -29,6 +29,9 @@ export function openAcademyDb(path = 'academy.db'): Database {
   const db = new Database(path, { create: true });
   db.run('PRAGMA journal_mode = WAL');
   db.run('PRAGMA foreign_keys = ON');
+  // The daemon and the strategy runner are separate processes writing the same
+  // file. WAL lets them overlap; the timeout covers the moments they collide.
+  db.run('PRAGMA busy_timeout = 5000');
   db.run(`
     CREATE TABLE IF NOT EXISTS students (
       id TEXT PRIMARY KEY,
