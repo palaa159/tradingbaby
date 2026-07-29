@@ -16,9 +16,10 @@
  * separate process on purpose: thinking is rationed by the subscription quota,
  * trading costs no AI at all, so a student out of energy keeps earning.
  *
- * `alpha-dashboard` publishes at https://alpha.5lab.co. Cloudflare proxies the
- * hostname to this host on :443 in "Full" SSL mode, so the origin certificate
- * is self-signed and never validated by Cloudflare.
+ * `alpha-dashboard` is the Next.js app, listening on loopback :4173. Caddy
+ * terminates TLS on :443 with the self-signed origin certificate and proxies to
+ * it — Cloudflare is in "Full" mode, which encrypts to the origin without
+ * validating the certificate. Caddy runs under systemd, not pm2.
  *
  * Both open the same academy.db. SQLite is in WAL mode, so the dashboard reads
  * while the daemon writes.
@@ -64,21 +65,16 @@ module.exports = {
     {
       name: 'alpha-dashboard',
       cwd: '/root/tradingbaby',
-      // Run bun as a plain binary: pm2's bun interpreter wrapper uses require(),
-      // which rejects this module for its top-level await.
+      // Next.js runs under Bun, not Node: every store imports `bun:sqlite`.
+      // Caddy holds :443 and proxies here, because Next has no TLS listener.
       script: '/usr/local/bin/bun',
       interpreter: 'none',
-      args: [
-        'src/server/dashboard/server.ts',
-        '--port=443',
-        '--db=/root/tradingbaby/academy.db',
-        '--tls-cert=/etc/alpha-academy/origin.crt',
-        '--tls-key=/etc/alpha-academy/origin.key',
-      ],
-      // Same clock as the daemon. planDay, minuteOfDay and dayKey are all local
-      // time, so a dashboard on UTC would call the wrong slots late and, near
-      // midnight, read a different day's ledger than the one being written.
-      env: { TZ: 'Asia/Bangkok' },
+      args: ['./node_modules/.bin/next', 'start', '-p', '4173'],
+      env: {
+        TZ: 'Asia/Bangkok',
+        ACADEMY_DB: '/root/tradingbaby/academy.db',
+        NODE_ENV: 'production',
+      },
       autorestart: true,
       restart_delay: 5000,
       out_file: '/var/log/alpha-dashboard.log',

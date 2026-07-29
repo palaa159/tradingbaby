@@ -3,7 +3,7 @@
  *
  *   bun run principal -- --db=academy.db
  *   bun run principal -- --watch=15          # keep walking, every 15 minutes
- *   bun run principal -- --classify=src/server/dashboard/server.ts,docs/X.md
+ *   bun run principal -- --classify=src/app/brain/page.tsx,docs/X.md
  *
  * Walks the school, writes down what it finds, and reads the students' request
  * box. It does not write code here — the zone policy decides what it *would* be

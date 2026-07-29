@@ -69,6 +69,9 @@ export const ZONE_RULES: ZoneRule[] = [
   { pattern: /server\/trading\//, zone: 'yellow', reason: 'ส่วนที่ส่งคำสั่งเทรด' },
 
   { pattern: /server\/dashboard\//, zone: 'green', reason: 'หน้าจอของคนสร้าง' },
+  // The screen moved to Next.js; without this the whole UI would fall through
+  // to the unrecognised-file rule and quietly become yellow.
+  { pattern: /^src\/app\//, zone: 'green', reason: 'หน้าจอของคนสร้าง' },
   { pattern: /server\/engine\/(tools|prompts)\.ts$/, zone: 'green', reason: 'เครื่องมือและคำสั่งของนักเรียน' },
   { pattern: /server\/marketData\.ts$/, zone: 'green', reason: 'ท่อข้อมูลตลาด' },
   { pattern: /\.test\.ts$/, zone: 'green', reason: 'ชุดทดสอบ' },

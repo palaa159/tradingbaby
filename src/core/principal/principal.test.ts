@@ -34,7 +34,7 @@ test('an unrecognised file is yellow, never green', () => {
 test('a change is as restricted as its most restricted file', () => {
   const mixed = classifyChange([
     'docs/PHASE2.md',
-    'src/server/dashboard/index.html',
+    'src/app/brain/page.tsx',
     'src/core/trading/guardrails.ts',
   ]);
   assert.equal(mixed.zone, 'red');
@@ -43,7 +43,7 @@ test('a change is as restricted as its most restricted file', () => {
 });
 
 test('an all-green change stays green', () => {
-  const green = classifyChange(['docs/PHASE2.md', 'src/server/dashboard/server.ts']);
+  const green = classifyChange(['docs/PHASE2.md', 'src/server/dashboard/queries.ts']);
   assert.equal(green.zone, 'green');
 });
 
