@@ -90,6 +90,8 @@
     <button data-view="trades">เทรดและสูตร</button>
     <button data-view="library">ห้องสมุดกลาง</button>
     <button data-view="diary">ไดอารี่</button>
+    <button data-view="schedule">ตารางเรียน</button>
+    <button data-view="principal">ครูใหญ่</button>
   </nav>
 
   <section class="view on" id="view-brain">
@@ -106,6 +108,8 @@
   <section class="view trades" id="view-trades"></section>
   <section class="view trades" id="view-library"></section>
   <section class="view diary" id="view-diary"></section>
+  <section class="view trades" id="view-schedule"></section>
+  <section class="view trades" id="view-principal"></section>
 </main>
 
 <script>
@@ -247,6 +251,83 @@ async function loadDiary() {
     </div>`).join('') : '<div class="empty">ยังไม่มีไดอารี่</div>';
 }
 
+const hhmm = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+
+// What ran, and what is still coming. The ledger answers the first half; the
+// plan answers the second, so a quiet school can be told apart from a dead one.
+async function loadSchedule() {
+  const esc = s => String(s ?? '').replace(/</g, '&lt;');
+  const d = await (await fetch('/api/schedule')).json();
+  const STATUS = {
+    done:     ['รันแล้ว',   'var(--ok)'],
+    skipped:  ['ข้าม',      'var(--bad)'],
+    upcoming: ['รอถึงคาบ',  'var(--dim)'],
+    late:     ['เลยเวลา',   'var(--warn)'],
+  };
+
+  const head = `<div class="stats" style="gap:18px;margin-bottom:16px;font-size:13px">
+    <span>วันนี้ ${d.day}</span>
+    <span>ตอนนี้ ${hhmm(d.nowMinute)}</span>
+    <span>ตื่น ${hhmm(d.schedule.wakingWindow[0])}-${hhmm(d.schedule.wakingWindow[1])}</span>
+    <span>รอบสั้น ${d.schedule.shortCyclesPerDay}/คน/วัน</span>
+    <span style="margin-left:auto">ทบทวน ${hhmm(d.schedule.dailyReviewMinute)}</span></div>`;
+
+  const rows = d.slots.map(slot => `<tr>
+    <td style="white-space:nowrap;font-variant-numeric:tabular-nums">${hhmm(slot.minuteOfDay)}</td>
+    <td>${slot.kind === 'short' ? 'รอบสั้น' : 'ทบทวนประจำวัน'}</td>
+    <td class="why">${slot.students.map(s => {
+      const [label, color] = STATUS[s.status] ?? [s.status, 'var(--dim)'];
+      const why = s.reason ? ` — ${esc(s.reason)}` : '';
+      return `<div>${esc(s.name)} <span style="color:${color};font-weight:600">${label}</span>` +
+        `<span style="color:var(--dim)">${why}</span></div>`;
+    }).join('')}</td>
+  </tr>`).join('');
+
+  const history = d.history.length ? `<h4 style="margin:22px 0 8px">ย้อนหลัง</h4><table>
+    <tr><th>วัน</th><th>รันแล้ว</th><th>ข้าม</th></tr>
+    ${d.history.map(h => `<tr><td>${h.day}</td>
+      <td style="color:var(--ok)">${h.done}</td>
+      <td style="color:${h.skipped ? 'var(--bad)' : 'var(--dim)'}">${h.skipped}</td></tr>`).join('')}
+    </table>` : '';
+
+  $('view-schedule').innerHTML = head + `<table>
+    <tr><th>เวลา</th><th>รอบ</th><th>นักเรียน</th></tr>${rows}</table>` + history;
+}
+
+// The Principal's rounds, read back. Empty means it has not walked yet, which
+// is itself worth seeing.
+async function loadPrincipal() {
+  const esc = s => String(s ?? '').replace(/</g, '&lt;');
+  const { rounds } = await (await fetch('/api/principal')).json();
+  const BADGE = { ok: ['✅', 'var(--ok)'], warn: ['⚠️', 'var(--warn)'], broken: ['🚨', 'var(--bad)'] };
+  const MARK = { ok: ['✓', 'var(--ok)'], warn: ['⚠', 'var(--warn)'], broken: ['✗', 'var(--bad)'] };
+
+  if (!rounds.length) {
+    $('view-principal').innerHTML =
+      '<div class="empty">ครูใหญ่ยังไม่ได้ออกตรวจเลย — รัน bun run principal -- --watch=15</div>';
+    return;
+  }
+
+  $('view-principal').innerHTML = rounds.map(r => {
+    const [badge, color] = BADGE[r.overall] ?? ['•', 'var(--dim)'];
+    return `<div class="entry">
+      <h4 style="color:${color}">${badge} ${r.overall}</h4><time>${fmt(r.at)}</time>
+      <div class="why" style="margin:6px 0 10px">
+        นักเรียน ${r.students} · สูตรที่เปิดใช้ ${r.activeStrategies} ·
+        คำร้องค้าง ${r.openRequests} · ตรวจซ้ำ ${r.replayChecked} สูตร
+        ${r.replayMismatches ? `<span style="color:var(--bad)">· ผลไม่ตรง ${r.replayMismatches}</span>` : ''}
+        · merge อัตโนมัติ ${r.autoMergeGreen ? 'เปิด' : 'ปิด'}
+      </div>
+      ${r.checks.map(c => {
+        const [mark, mc] = MARK[c.severity] ?? ['•', 'var(--dim)'];
+        return `<div style="margin:3px 0"><span style="color:${mc}">${mark}</span>
+          ${esc(c.name)}: ${esc(c.detail)}
+          ${c.action ? `<div class="why" style="margin-left:16px">→ ${esc(c.action)}</div>` : ''}</div>`;
+      }).join('')}
+    </div>`;
+  }).join('');
+}
+
 // --- force-directed layout: repulsion + edge springs + gravity to center ---
 function step() {
   const nodes = graph.nodes.filter(n => layout.has(n.id));
@@ -379,6 +460,10 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
   document.querySelectorAll('.view').forEach(v =>
     v.classList.toggle('on', v.id === 'view-' + b.dataset.view));
+  // School-wide views do not follow the selected student, so nothing else
+  // fetches them — pull on open rather than making the maker wait for the tick.
+  if (b.dataset.view === 'schedule') loadSchedule();
+  if (b.dataset.view === 'principal') loadPrincipal();
 });
 
 // Live: while parked at "now", keep pulling so growth shows up as it happens.
@@ -386,6 +471,9 @@ setInterval(async () => {
   if (playing) return;
   await loadClassroom();
   if (atTime === Infinity) { await loadBrain(); await loadDiary(); await loadTrades(); await loadLibrary(); }
+  // Independent of the timeline: the bell and the Principal keep their own time.
+  if (document.querySelector('#view-schedule.on')) await loadSchedule();
+  if (document.querySelector('#view-principal.on')) await loadPrincipal();
 }, 3000);
 
 loadClassroom();

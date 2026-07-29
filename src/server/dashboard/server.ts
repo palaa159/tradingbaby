@@ -17,9 +17,12 @@ import { buildLibrary, librarySummary, type ClaimRecord } from '../../core/schoo
 import { alphaReport } from '../../core/trading/benchmark.ts';
 import { portfolioValue } from '../../core/trading/portfolio.ts';
 import { DEFAULT_ACADEMY } from '../academyConfig.ts';
+import { SqliteCycleLedger } from '../db/cycleLedger.ts';
+import { PrincipalLog } from '../db/principalLog.ts';
 import { openAcademyDb, SqliteEventStore, StudentStore } from '../db/sqliteStore.ts';
 import { StrategyStore } from '../db/strategyStore.ts';
 import { TradingStore } from '../db/tradingStore.ts';
+import { dayKey, minuteOfDay, planDay } from '../scheduler.ts';
 
 function arg(name: string): string | undefined {
   const prefix = `--${name}=`;
@@ -32,6 +35,8 @@ const events = new SqliteEventStore(db);
 const students = new StudentStore(db);
 const strategies = new StrategyStore(db);
 const trading = new TradingStore(db);
+const ledger = new SqliteCycleLedger(db);
+const principal = new PrincipalLog(db);
 const port = Number(arg('port') ?? 4173);
 const tlsCert = arg('tls-cert');
 const tlsKey = arg('tls-key');
@@ -159,6 +164,55 @@ const server = Bun.serve({
       }));
       const entries = buildLibrary(records, { classSize: Math.max(1, roster.size) });
       return json({ entries, summary: librarySummary(entries), classSize: roster.size });
+    }
+
+    if (url.pathname === '/api/schedule') {
+      const at = Date.now();
+      const day = dayKey(at);
+      const nowMinute = minuteOfDay(at);
+      const roster = students.list();
+      const attempted = new Map(
+        ledger.day(day).map((r) => [`${r.studentId}:${r.kind}:${r.minuteOfDay}`, r]),
+      );
+
+      const slots = planDay(config.schedule).map((slot) => ({
+        minuteOfDay: slot.minuteOfDay,
+        kind: slot.kind,
+        students: roster.map((student) => {
+          const run = attempted.get(`${student.id}:${slot.kind}:${slot.minuteOfDay}`);
+          if (run) {
+            return {
+              id: student.id,
+              name: student.name,
+              status: run.status,
+              reason: run.reason ?? null,
+              at: run.at,
+            };
+          }
+          // Nothing recorded yet: still to come if the bell has not rung, and
+          // overdue if it has — the daemon writes the miss when it gets there.
+          return {
+            id: student.id,
+            name: student.name,
+            status: slot.minuteOfDay >= nowMinute ? 'upcoming' : 'late',
+            reason: null,
+            at: null,
+          };
+        }),
+      }));
+
+      return json({
+        day,
+        now: at,
+        nowMinute,
+        schedule: config.schedule,
+        slots,
+        history: ledger.dayCounts(14),
+      });
+    }
+
+    if (url.pathname === '/api/principal') {
+      return json({ rounds: principal.recent(30) });
     }
 
     if (url.pathname === '/api/diary') {

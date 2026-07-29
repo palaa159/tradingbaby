@@ -7,6 +7,11 @@
  * is on UTC, so the daemon is pinned to Asia/Bangkok — the waking window in
  * the spec is the maker's morning, not Greenwich's.
  *
+ * `alpha-principal` walks the school every 15 minutes and writes each round to
+ * principal_rounds, so the maker reads the school's health on the dashboard
+ * instead of having to be at a terminal when a round happens. It still writes
+ * no code — auto-merge stays off until the maker turns it on (spec §9.4).
+ *
  * `alpha-trader` runs the adopted strategies on the candle clock. It is a
  * separate process on purpose: thinking is rationed by the subscription quota,
  * trading costs no AI at all, so a student out of energy keeps earning.
@@ -31,6 +36,18 @@ module.exports = {
       restart_delay: 10000,
       out_file: '/var/log/alpha-daemon.log',
       error_file: '/var/log/alpha-daemon.log',
+    },
+    {
+      name: 'alpha-principal',
+      cwd: '/root/tradingbaby',
+      script: '/usr/local/bin/bun',
+      interpreter: 'none',
+      args: ['src/server/principal.ts', '--db=/root/tradingbaby/academy.db', '--watch=15'],
+      env: { TZ: 'Asia/Bangkok' },
+      autorestart: true,
+      restart_delay: 10000,
+      out_file: '/var/log/alpha-principal.log',
+      error_file: '/var/log/alpha-principal.log',
     },
     {
       name: 'alpha-trader',

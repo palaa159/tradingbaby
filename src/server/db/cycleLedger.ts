@@ -86,6 +86,18 @@ export class SqliteCycleLedger implements CycleLedger {
     );
   }
 
+  /** Per-day totals, newest first — the maker's "has the bell been ringing?" view. */
+  dayCounts(limit = 14): { day: string; done: number; skipped: number }[] {
+    return this.db
+      .query<{ day: string; done: number; skipped: number }, [number]>(
+        `SELECT day,
+                SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) AS done,
+                SUM(CASE WHEN status = 'skipped' THEN 1 ELSE 0 END) AS skipped
+         FROM cycle_runs GROUP BY day ORDER BY day DESC LIMIT ?`,
+      )
+      .all(limit);
+  }
+
   /** Everything attempted on one day, oldest first — what the maker reads back. */
   day(day: string): CycleRun[] {
     return this.db
