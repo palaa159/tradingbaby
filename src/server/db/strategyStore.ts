@@ -159,6 +159,26 @@ export class StrategyStore {
       .map(toVersion);
   }
 
+  /**
+   * Every tested claim in the school, for the library (spec §9.3).
+   * A strategy that reached activation was adopted; a retired one either lost
+   * its verdict or was superseded — the graph carries the nuance, this carries
+   * the vote.
+   */
+  allStudents(): { studentId: string; name: string; version: number; spec: StrategySpec; status: string; at: number }[] {
+    return this.db
+      .query<StrategyRow & { name: string }, []>('SELECT * FROM strategies ORDER BY activated_at')
+      .all()
+      .map((row) => ({
+        studentId: row.student_id,
+        name: row.name,
+        version: row.version,
+        spec: JSON.parse(row.spec) as StrategySpec,
+        status: row.status,
+        at: row.activated_at,
+      }));
+  }
+
   /** Run a strategy and record exactly what it saw, so the decision can be re-run. */
   runAndRecord(strategy: StrategyVersion, input: EvaluationInput, at: number): EvaluationResult {
     const result = evaluate(strategy.spec, input);

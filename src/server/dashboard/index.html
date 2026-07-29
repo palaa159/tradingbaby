@@ -88,6 +88,7 @@
   <nav>
     <button data-view="brain" class="on">สมอง</button>
     <button data-view="trades">เทรดและสูตร</button>
+    <button data-view="library">ห้องสมุดกลาง</button>
     <button data-view="diary">ไดอารี่</button>
   </nav>
 
@@ -103,6 +104,7 @@
   </section>
 
   <section class="view trades" id="view-trades"></section>
+  <section class="view trades" id="view-library"></section>
   <section class="view diary" id="view-diary"></section>
 </main>
 
@@ -152,7 +154,7 @@ async function select(id) {
   current = id; selected = null; layout.clear(); atTime = Infinity;
   $('slider').value = 100;
   document.querySelectorAll('.card').forEach(el => el.classList.toggle('on', el.dataset.id === id));
-  await Promise.all([loadBrain(), loadDiary(), loadTrades()]);
+  await Promise.all([loadBrain(), loadDiary(), loadTrades(), loadLibrary()]);
 }
 
 async function loadBrain() {
@@ -202,6 +204,36 @@ async function loadTrades() {
     `<section><h3>ชั้นวางสูตร</h3>${strategies}</section>` +
     `<section><h3>การเทรด</h3>${fills}</section>` +
     (blocked ? `<section><h3>คำสั่งที่กติกาบ้านห้ามไว้</h3>${blocked}</section>` : '');
+}
+
+async function loadLibrary() {
+  const data = await (await fetch('/api/library')).json();
+  const esc = (s) => String(s ?? '').replace(/</g, '&lt;');
+  const LABEL = {
+    endorsed: ['สถาบันรับรอง', 'var(--ok)'],
+    rejected: ['สถาบันตีตก', 'var(--dim)'],
+    disputed: ['ยังเถียงกันอยู่', 'var(--warn)'],
+    insufficient: ['หลักฐานยังไม่พอ', 'var(--dim)'],
+  };
+  const s = data.summary;
+  const head = `<div class="stats" style="gap:18px;margin-bottom:16px;font-size:13px">
+    <span style="color:var(--ok)">รับรองแล้ว ${s.endorsed}</span>
+    <span style="color:var(--warn)">กำลังเถียง ${s.disputed}</span>
+    <span>ตีตก ${s.rejected}</span><span>รอหลักฐาน ${s.pending}</span>
+    <span style="margin-left:auto">ทั้งชั้น ${data.classSize} คน</span></div>`;
+
+  $('view-library').innerHTML = head + (data.entries.length ? `<table>
+    <tr><th>ข้ออ้าง (กฎที่พิสูจน์)</th><th>สถานะ</th><th>ใครยืนยันบ้าง</th></tr>
+    ${data.entries.map(e => {
+      const [label, color] = LABEL[e.consensus] ?? [e.consensus, 'var(--dim)'];
+      return `<tr>
+        <td><div>${esc(e.statement)}</div></td>
+        <td style="color:${color};font-weight:600">${label}</td>
+        <td class="why">${e.verdicts.map(v =>
+          `${esc(v.studentName)} <span style="color:${v.status === 'adopted' ? 'var(--ok)' : 'var(--bad)'}">${v.status === 'adopted' ? 'รับ' : 'ตีตก'}</span>`).join(' · ')}</td>
+      </tr>`;
+    }).join('')}</table>`
+    : '<div class="empty">ยังไม่มีข้ออ้างที่ผ่านการทดสอบ — นักเรียนต้องพิสูจน์อะไรสักอย่างก่อน</div>');
 }
 
 async function loadDiary() {
@@ -351,7 +383,7 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
 setInterval(async () => {
   if (playing) return;
   await loadClassroom();
-  if (atTime === Infinity) { await loadBrain(); await loadDiary(); await loadTrades(); }
+  if (atTime === Infinity) { await loadBrain(); await loadDiary(); await loadTrades(); await loadLibrary(); }
 }, 3000);
 
 loadClassroom();
