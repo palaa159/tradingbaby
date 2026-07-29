@@ -405,3 +405,49 @@ The endorsed claim was authored by three students under three different names,
 on different symbols, at different position sizes — and the canonical key
 correctly recognised it as one belief. One student proving something is not the
 school knowing it; that is the whole point of the threshold.
+
+## H2 — The Principal (done, in approval mode)
+
+The caretaker from spec §9.4. Built with its authority deliberately incomplete:
+the spec asks this of itself — *"เริ่มด้วยโหมดขออนุมัติก่อน แล้วค่อยปลดเป็น merge
+อัตโนมัติเมื่อชุดทดสอบแน่นพอ"* — so `autoMergeGreen` ships **off**.
+
+**Three zones, decided by which files a change touches:**
+
+| Zone | Files | Action |
+|---|---|---|
+| 🔴 red | guardrails, the evaluator and indicators, the event log, the Principal's own zone rules, anything named for real money | refuse and hand to the maker |
+| 🟡 yellow | `server/db/`, metabolism, strategy types, scheduler, trading | write it, open a PR, wait |
+| 🟢 green | dashboard, student tools and prompts, market data, tests, docs | merge — **once the maker opts in** |
+
+The red list is not a list of risky files. It is the list of promises this system
+makes: guardrails are what stop a student losing the maker's money, the evaluator
+is what keeps every past trade explainable, the event log is the students'
+memory. A caretaker that can quietly edit those is not a caretaker.
+
+`core/principal/` is red too. An agent that can widen its own permissions has
+none. Anything unrecognised is **yellow, never green** — an unknown file is not a
+safe file — and a change is as restricted as its most restricted file.
+
+**Health rounds** — each check names a next step, because a check that reports
+"something is wrong" without one is just anxiety:
+
+- Replay drift across every recorded evaluation. `broken`, not a warning: if the
+  past has stopped reproducing, nothing else matters (contract §9.5)
+- Suspended students (`broken` when it is the whole class), students silent for
+  more than a day and a half, empty brains, no proven strategies, open requests
+
+**Measured on the real school:**
+
+```
+⚠️ ครูใหญ่ออกตรวจโรงเรียน — สรุป: warn
+  ✓ ความทำซ้ำได้ของสูตรเทรด: ทุกสูตรรันซ้ำแล้วได้ผลเหมือนเดิม
+  ⚠ นักเรียนที่เงียบไป: ข้าวฟ่าง ไม่ได้คิดอะไรมากกว่าหนึ่งวันครึ่ง
+  ⚠ สมองว่างเปล่า: ข้าวฟ่าง ยังไม่มีอะไรในสมองเลย
+```
+
+Both true: ข้าวฟ่าง was enrolled and never ran a cycle. The Principal found a
+real gap on its first round.
+
+`bun run principal -- --classify=<paths>` dry-runs the zone decision, so the
+maker can ask "what would you be allowed to do here?" before asking for anything.
