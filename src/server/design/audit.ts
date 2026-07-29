@@ -40,7 +40,7 @@ export interface PageAudit {
   headings: string[];
 }
 
-const METRICS = `() => {
+const METRICS = `(() => {
   const vis = (el) => {
     const r = el.getBoundingClientRect();
     return r.width > 0 && r.height > 0;
@@ -75,7 +75,7 @@ const METRICS = `() => {
     longestParagraph: paragraphs.length ? Math.max.apply(null, paragraphs) : 0,
     headings: Array.from(document.querySelectorAll('h1,h2,h3,h4')).map((h) => (h.textContent || '').trim()).slice(0, 12),
   };
-}`;
+})()`;
 
 async function auditPage(
   page: Page,
@@ -101,10 +101,12 @@ async function auditPage(
   const screenshot = `${shotDir}/${viewport}${slug}.png`;
   await page.screenshot({ path: screenshot });
 
-  const metrics = (await page.evaluate(METRICS)) as Omit<
-    PageAudit,
-    'path' | 'viewport' | 'screenshot' | 'consoleErrors'
-  >;
+  const metrics = (await page.evaluate(METRICS)) as
+    | Omit<PageAudit, 'path' | 'viewport' | 'screenshot' | 'consoleErrors'>
+    | undefined;
+  if (!metrics || !Array.isArray(metrics.smallTargets)) {
+    throw new Error(`วัดหน้า ${path} (${viewport}) ไม่ได้ — evaluate ไม่คืนค่า`);
+  }
   return { ...metrics, path, viewport, screenshot, consoleErrors: errors };
 }
 
