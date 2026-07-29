@@ -4,7 +4,18 @@
  * spec and the same EvaluationInput it returns the same orders forever.
  */
 
-import { closes, ema, rsi, sma, type Series } from './indicators.ts';
+import {
+  closes,
+  doji,
+  ema,
+  engulfing,
+  hammer,
+  rsi,
+  shootingStar,
+  sma,
+  volumeSma,
+  type Series,
+} from './indicators.ts';
 import type {
   Candle,
   Condition,
@@ -45,6 +56,24 @@ function series(candles: Candle[], operand: Operand): Reading {
       break;
     case 'rsi':
       values = rsi(closes(candles), period);
+      break;
+    case 'vol_sma':
+      values = volumeSma(candles, period);
+      break;
+    case 'hammer':
+      values = hammer(candles);
+      break;
+    case 'shooting_star':
+      values = shootingStar(candles);
+      break;
+    case 'doji':
+      values = doji(candles);
+      break;
+    case 'engulfing_bullish':
+      values = engulfing(candles, 'bullish');
+      break;
+    case 'engulfing_bearish':
+      values = engulfing(candles, 'bearish');
       break;
   }
   return { now: values[values.length - 1], prev: values[values.length - 2], label };

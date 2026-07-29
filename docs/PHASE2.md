@@ -322,3 +322,45 @@ doing exactly what they were written for.
 Carried to Phase 3: the DSL cannot express candlestick patterns, which is a
 genuine gap between what students learn from the internet and what they are
 allowed to test.
+
+## P10 — Candlestick patterns, because a student asked (done)
+
+Closing the gap มะลิ found in P9: she learned Hammer, Doji, and Shooting Star
+from the internet, wrote a hypothesis about them, and the DSL could not express
+any of it. Built exactly what her three real hypotheses need — nothing more.
+
+- [x] Shape patterns as indicators returning 1 or 0 per bar: `hammer`,
+      `shooting_star`, `doji`, `engulfing_bullish`, `engulfing_bearish`. They
+      compose with the existing comparison operators (`hammer > 0`) rather than
+      needing new syntax
+- [x] `vol_sma` — average volume over a window, for "volume above its 20-bar
+      average", which two of her hypotheses needed
+- [x] The schema warns when a pattern is given a `period`, since shapes read one
+      bar and the value would otherwise be silently ignored
+- [x] Patterns check shape only. "Hammer *in a downtrend*" is left to the student
+      to add as a second condition, which keeps each primitive honest about what
+      it actually verifies
+
+**Her hypothesis is now expressible**, and validates:
+
+```json
+entry: [ hammer > 0, volume > vol_sma(20) ]
+exit:  [ rsi(14) > 65 ]
+```
+
+### A bug found the same way the student found hers
+
+The first backtest of that strategy fired **zero trades**. The cause was in the
+`hammer()` I had just written: it judged the upper shadow against the *body*
+(`upperShadow <= body * 0.6`). That breaks precisely where hammers live — a tiny
+body makes the threshold tiny, so any upper wick at all disqualifies a textbook
+hammer. Shadows are now judged against the bar's **range**, which is what the
+classic definition actually means.
+
+After the fix the same strategy fires 7 trades and returns 26.02% against a
+benchmark's 141.29% — it works, and it loses to buy-and-hold in a strong
+uptrend, which is the same lesson P2 measured and exactly what `judge()` exists
+to tell her.
+
+Two regression tests pin the fix: a small-bodied hammer must be detected, and a
+bar with long shadows on both sides must not be.

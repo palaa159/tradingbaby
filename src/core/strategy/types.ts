@@ -6,7 +6,20 @@
  * Students author these as JSON; the engine is the only thing that runs them.
  */
 
-export type IndicatorName = 'price' | 'volume' | 'rsi' | 'sma' | 'ema';
+export type IndicatorName =
+  | 'price'
+  | 'volume'
+  | 'rsi'
+  | 'sma'
+  | 'ema'
+  /** Average volume over `period` bars — for "volume above its average". */
+  | 'vol_sma'
+  /** Candlestick shapes. Each returns 1 on a matching bar, otherwise 0. */
+  | 'hammer'
+  | 'shooting_star'
+  | 'doji'
+  | 'engulfing_bullish'
+  | 'engulfing_bearish';
 
 export type Operand =
   | { kind: 'indicator'; name: IndicatorName; period?: number | undefined }
