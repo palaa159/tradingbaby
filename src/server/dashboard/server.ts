@@ -12,6 +12,7 @@
 import { replay, type GraphEvent } from '../../core/eventLog.ts';
 import { hungerState } from '../../core/metabolism.ts';
 import { describePersonality } from '../../core/personality.ts';
+import { buildLibrary, librarySummary, type ClaimRecord } from '../../core/school/hive.ts';
 import { alphaReport } from '../../core/trading/benchmark.ts';
 import { portfolioValue } from '../../core/trading/portfolio.ts';
 import { DEFAULT_ACADEMY } from '../academyConfig.ts';
@@ -134,6 +135,24 @@ const server = Bun.serve({
         blocked: trading.blocked(studentId),
         strategies: strategies.all(studentId),
       });
+    }
+
+    if (url.pathname === '/api/library') {
+      const roster = new Map(students.list().map((s) => [s.id, s.name]));
+      const records: ClaimRecord[] = strategies.allStudents().map((entry) => ({
+        spec: entry.spec,
+        verdict: {
+          studentId: entry.studentId,
+          studentName: roster.get(entry.studentId) ?? entry.studentId,
+          // Reaching activation means the judge adopted it (spec §6.2).
+          status: 'adopted' as const,
+          alphaPct: 0,
+          confidence: 0,
+          at: entry.at,
+        },
+      }));
+      const entries = buildLibrary(records, { classSize: Math.max(1, roster.size) });
+      return json({ entries, summary: librarySummary(entries), classSize: roster.size });
     }
 
     if (url.pathname === '/api/diary') {

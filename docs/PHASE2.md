@@ -364,3 +364,44 @@ to tell her.
 
 Two regression tests pin the fix: a small-bodied hammer must be detected, and a
 bar with long shadows on both sides must not be.
+
+---
+
+# Phase 3 — "โรงเรียนเต็มรูปแบบ"
+
+## H1 — Hive mind: the school library (done)
+
+The hard part of consensus is deciding when two students believe *the same
+thing*. Comparing their prose is a trap — they write differently, and a fuzzy
+text match fills the library with near-duplicates and false agreement.
+
+The canonical form was already sitting in the codebase. A tested claim here *is*
+a strategy spec, and two specs either encode the same rule or they do not. So:
+
+- [x] `claimKey()` — the identity of a claim is its sorted entry and exit
+      conditions plus timeframe. Name, symbols, and position size are excluded
+      deliberately: those are choices about *applying* a belief, not the belief
+- [x] `buildLibrary()` groups every tested claim in the school by that key, one
+      vote per student, most recent verdict winning so a student that changed its
+      mind does not vote twice
+- [x] Consensus needs `max(minVerifiers, majority of the class)` in agreement —
+      three verifiers endorse in a class of three, but not in a class of ten
+- [x] **Disagreement surfaces at any size.** Two students who tested the same
+      rule and reached opposite conclusions is the most interesting thing that
+      can happen here, so `disputed` ranks above `endorsed` in the listing
+- [x] Agreement that something *fails* is knowledge too — `rejected` is a real
+      state, not an absence
+- [x] Dashboard **ห้องสมุดกลาง** view and `/api/library`
+
+**Measured** — three students, six claims:
+
+| Consensus | Claim | Who |
+|---|---|---|
+| `disputed` | rsi(14) < 20 → exit rsi > 80 | มะลิ adopted · ภูผา debunked |
+| `endorsed` | rsi(14) < 30 → exit rsi > 70 | มะลิ · ภูผา · ข้าวฟ่าง all adopted, mean alpha +5.37% |
+| `insufficient` | rsi(14) < 25 → exit rsi > 75 | ข้าวฟ่าง alone |
+
+The endorsed claim was authored by three students under three different names,
+on different symbols, at different position sizes — and the canonical key
+correctly recognised it as one belief. One student proving something is not the
+school knowing it; that is the whole point of the threshold.
