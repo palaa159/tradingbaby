@@ -3,102 +3,117 @@
 import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 
-import type { Trades } from '../_components/types.ts';
-import { fmt } from '../_components/types.ts';
-import { usePoll } from '../_components/usePoll.ts';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { fmt, type Trades } from '../_components/types';
+import { usePoll } from '../_components/usePoll';
 
 function TradesView() {
   const student = useSearchParams().get('student');
   const data = usePoll<Trades>(
     student ? `/api/trades?student=${encodeURIComponent(student)}` : null,
   );
-  if (!data) return <section className="view trades" />;
+  if (!data) return <div className="p-4 text-sm text-muted-foreground">กำลังโหลด…</div>;
 
   return (
-    <section className="view trades">
+    <div className="flex h-full flex-col gap-6 overflow-y-auto p-3 md:p-5">
       <section>
-        <h3>ชั้นวางสูตร</h3>
+        <h2 className="mb-2 text-sm font-medium text-muted-foreground">ชั้นวางสูตร</h2>
         {data.strategies.length ? (
-          <table>
-            <tbody>
-              <tr>
-                <th>สูตร</th><th>ฝั่ง</th><th>กราฟ</th><th>เวอร์ชัน</th>
-                <th>สถานะ</th><th>ไม้</th><th>จากข้อสงสัย</th>
-              </tr>
-              {data.strategies.map((s) => (
-                <tr key={`${s.spec.name}-v${s.version}`}>
-                  <td>{s.spec.name}</td>
-                  <td>{s.spec.direction === 'short' ? '▼ ขาลง' : '▲ ขาขึ้น'}</td>
-                  <td>{s.spec.timeframe}</td>
-                  <td>v{s.version}</td>
-                  <td>{s.status === 'active' ? 'ใช้งาน' : 'ปลดแล้ว'}</td>
-                  <td>{s.spec.sizePct}%</td>
-                  <td className="why">{s.fromHypothesisIds.join(', ') || '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="flex flex-col gap-2">
+            {data.strategies.map((s) => (
+              <Card key={`${s.spec.name}-v${s.version}`} className="gap-0 py-3">
+                <CardHeader className="px-3 pb-2">
+                  <CardTitle className="flex flex-wrap items-center gap-2 text-sm">
+                    {s.spec.name}
+                    <Badge variant="outline" className="text-[10px]">
+                      v{s.version}
+                    </Badge>
+                    <Badge
+                      variant="outline"
+                      className={`text-[10px] ${s.status === 'active' ? 'text-[var(--ok)]' : 'text-muted-foreground'}`}
+                    >
+                      {s.status === 'active' ? 'ใช้งาน' : 'ปลดแล้ว'}
+                    </Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-wrap gap-x-4 gap-y-1 px-3 text-[11px] text-muted-foreground">
+                  <span>{s.spec.direction === 'short' ? '▼ ขาลง' : '▲ ขาขึ้น'}</span>
+                  <span>กราฟ {s.spec.timeframe}</span>
+                  <span>ไม้ {s.spec.sizePct}%</span>
+                  {s.fromHypothesisIds.length ? (
+                    <span>จากข้อสงสัย {s.fromHypothesisIds.join(', ')}</span>
+                  ) : null}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         ) : (
-          <div className="empty">ยังไม่มีสูตร</div>
+          <p className="text-sm text-muted-foreground">ยังไม่มีสูตร</p>
         )}
       </section>
 
       <section>
-        <h3>การเทรด</h3>
+        <h2 className="mb-2 text-sm font-medium text-muted-foreground">การเทรด</h2>
         {data.fills.length ? (
-          <table>
-            <tbody>
-              <tr>
-                <th>เวลา</th><th>ทำอะไร</th><th>เหรียญ</th><th>จำนวน</th><th>ราคา</th>
-                <th>เพราะอะไร · จากความรู้ไหน</th>
-              </tr>
-              {data.fills.map((f) => (
-                <tr key={f.id} className={f.side}>
-                  <td>{fmt(f.at)}</td>
-                  <td>{f.side === 'buy' ? 'ซื้อ' : 'ขาย'}</td>
-                  <td>{f.symbol}</td>
-                  <td>{f.quantity.toFixed(4)}</td>
-                  <td>{f.price.toFixed(2)}</td>
-                  <td>
-                    <div className="why">{f.reason}</div>
-                    {f.strategy ? (
-                      <div className="why">
-                        สูตร {f.strategy.id} (v{f.strategy.version}, {f.strategy.status})
-                      </div>
-                    ) : null}
-                    {f.hypothesisIds.length ? (
-                      <div className="why">← ข้อสงสัย: {f.hypothesisIds.join(', ')}</div>
-                    ) : null}
-                    {f.guardrailNote ? <div className="note">⚠ {f.guardrailNote}</div> : null}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="flex flex-col gap-2">
+            {data.fills.map((f) => (
+              <Card key={f.id} className="gap-0 py-3">
+                <CardHeader className="px-3 pb-1">
+                  <CardTitle className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className={f.side === 'buy' ? 'text-[var(--ok)]' : 'text-[var(--bad)]'}>
+                      {f.side === 'buy' ? 'ซื้อ' : 'ขาย'}
+                    </span>
+                    <span>{f.symbol}</span>
+                    <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                      {f.quantity.toFixed(4)} @ {f.price.toFixed(2)}
+                    </span>
+                    <time className="ml-auto text-[11px] font-normal text-muted-foreground">
+                      {fmt(f.at)}
+                    </time>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-3 text-[11px] text-muted-foreground">
+                  <p>{f.reason}</p>
+                  {f.strategy ? (
+                    <p>
+                      สูตร {f.strategy.id} (v{f.strategy.version}, {f.strategy.status})
+                    </p>
+                  ) : null}
+                  {f.hypothesisIds.length ? <p>← ข้อสงสัย: {f.hypothesisIds.join(', ')}</p> : null}
+                  {f.guardrailNote ? <p className="text-[var(--warn)]">⚠ {f.guardrailNote}</p> : null}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         ) : (
-          <div className="empty">ยังไม่มีการเทรด</div>
+          <p className="text-sm text-muted-foreground">ยังไม่มีการเทรด</p>
         )}
       </section>
 
       {data.blocked.length ? (
         <section>
-          <h3>คำสั่งที่กติกาบ้านห้ามไว้</h3>
-          <table>
-            <tbody>
-              <tr><th>เวลา</th><th>ทำอะไร</th><th>เหรียญ</th><th>กติกาที่ห้าม</th></tr>
-              {data.blocked.map((b, i) => (
-                <tr key={`${b.at}-${b.symbol}-${i}`}>
-                  <td>{fmt(b.at)}</td>
-                  <td>{b.side === 'buy' ? 'ซื้อ' : 'ขาย'}</td>
-                  <td>{b.symbol}</td>
-                  <td className="note">{b.reason}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <h2 className="mb-2 text-sm font-medium text-muted-foreground">
+            คำสั่งที่กติกาบ้านห้ามไว้
+          </h2>
+          <div className="flex flex-col gap-1">
+            {data.blocked.map((b, i) => (
+              <div
+                key={`${b.at}-${b.symbol}-${i}`}
+                className="rounded-md border border-border px-3 py-2 text-sm"
+              >
+                <span className={b.side === 'buy' ? 'text-[var(--ok)]' : 'text-[var(--bad)]'}>
+                  {b.side === 'buy' ? 'ซื้อ' : 'ขาย'}
+                </span>{' '}
+                {b.symbol}
+                <p className="text-[11px] text-[var(--warn)]">{b.reason}</p>
+                <time className="text-[11px] text-muted-foreground">{fmt(b.at)}</time>
+              </div>
+            ))}
+          </div>
         </section>
       ) : null}
-    </section>
+    </div>
   );
 }
 

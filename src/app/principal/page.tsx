@@ -1,69 +1,71 @@
 'use client';
 
-import type { PrincipalData } from '../_components/types.ts';
-import { fmt } from '../_components/types.ts';
-import { usePoll } from '../_components/usePoll.ts';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { fmt, type PrincipalData } from '../_components/types';
+import { usePoll } from '../_components/usePoll';
 
 const BADGE: Record<string, [string, string]> = {
-  ok: ['✅', 'var(--ok)'],
-  warn: ['⚠️', 'var(--warn)'],
-  broken: ['🚨', 'var(--bad)'],
+  ok: ['✅', 'text-[var(--ok)]'],
+  warn: ['⚠️', 'text-[var(--warn)]'],
+  broken: ['🚨', 'text-[var(--bad)]'],
 };
 
 const MARK: Record<string, [string, string]> = {
-  ok: ['✓', 'var(--ok)'],
-  warn: ['⚠', 'var(--warn)'],
-  broken: ['✗', 'var(--bad)'],
+  ok: ['✓', 'text-[var(--ok)]'],
+  warn: ['⚠', 'text-[var(--warn)]'],
+  broken: ['✗', 'text-[var(--bad)]'],
 };
 
 export default function Page() {
   const data = usePoll<PrincipalData>('/api/principal');
-  if (!data) return <section className="view trades" />;
+  if (!data) return <div className="p-4 text-sm text-muted-foreground">กำลังโหลด…</div>;
 
   if (!data.rounds.length) {
     return (
-      <section className="view trades">
-        <div className="empty">
-          ครูใหญ่ยังไม่ได้ออกตรวจเลย — รัน bun run principal -- --watch=15
-        </div>
-      </section>
+      <div className="p-4 text-sm text-muted-foreground">
+        ครูใหญ่ยังไม่ได้ออกตรวจเลย — <code>bun run principal -- --watch=15</code>
+      </div>
     );
   }
 
   return (
-    <section className="view trades">
+    <div className="flex h-full flex-col gap-3 overflow-y-auto p-3 md:p-5">
       {data.rounds.map((r) => {
-        const [badge, color] = BADGE[r.overall] ?? ['•', 'var(--dim)'];
+        const [badge, color] = BADGE[r.overall] ?? ['•', 'text-muted-foreground'];
         return (
-          <div className="entry" key={r.id}>
-            <h4 style={{ color }}>
-              {badge} {r.overall}
-            </h4>
-            <time>{fmt(r.at)}</time>
-            <div className="why" style={{ margin: '6px 0 10px' }}>
-              นักเรียน {r.students} · สูตรที่เปิดใช้ {r.activeStrategies} · คำร้องค้าง{' '}
-              {r.openRequests} · ตรวจซ้ำ {r.replayChecked} สูตร
-              {r.replayMismatches ? (
-                <span style={{ color: 'var(--bad)' }}> · ผลไม่ตรง {r.replayMismatches}</span>
-              ) : null}{' '}
-              · merge อัตโนมัติ {r.autoMergeGreen ? 'เปิด' : 'ปิด'}
-            </div>
-            {r.checks.map((c, i) => {
-              const [mark, mc] = MARK[c.severity] ?? ['•', 'var(--dim)'];
-              return (
-                <div key={`${c.name}-${i}`} style={{ margin: '3px 0' }}>
-                  <span style={{ color: mc }}>{mark}</span> {c.name}: {c.detail}
-                  {c.action ? (
-                    <div className="why" style={{ marginLeft: 16 }}>
-                      → {c.action}
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
+          <Card key={r.id} className="gap-0 py-3">
+            <CardHeader className="px-3 pb-2">
+              <CardTitle className={`flex flex-wrap items-baseline gap-2 text-sm ${color}`}>
+                <span>
+                  {badge} {r.overall}
+                </span>
+                <time className="text-[11px] font-normal text-muted-foreground">{fmt(r.at)}</time>
+              </CardTitle>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                นักเรียน {r.students} · สูตร {r.activeStrategies} · คำร้องค้าง {r.openRequests} ·
+                ตรวจซ้ำ {r.replayChecked}
+                {r.replayMismatches ? (
+                  <span className="text-[var(--bad)]"> · ผลไม่ตรง {r.replayMismatches}</span>
+                ) : null}{' '}
+                · merge อัตโนมัติ {r.autoMergeGreen ? 'เปิด' : 'ปิด'}
+              </p>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-1 px-3 text-sm">
+              {r.checks.map((c, i) => {
+                const [mark, mc] = MARK[c.severity] ?? ['•', 'text-muted-foreground'];
+                return (
+                  <div key={`${c.name}-${i}`}>
+                    <span className={mc}>{mark}</span> {c.name}: {c.detail}
+                    {c.action ? (
+                      <p className="ml-4 text-[11px] text-muted-foreground">→ {c.action}</p>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
         );
       })}
-    </section>
+    </div>
   );
 }

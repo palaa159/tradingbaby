@@ -1,6 +1,6 @@
 'use client';
 
-import { usePoll } from './usePoll.ts';
+import { usePoll } from './usePoll';
 
 interface BuildInfo {
   shortSha: string;
@@ -12,39 +12,42 @@ interface BuildInfo {
   now: number;
 }
 
-/** "3 ชม.ที่แล้ว" — close enough is the point; exact time is in the tooltip. */
 function ago(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000));
-  if (s < 60) return `${s} วินาทีที่แล้ว`;
+  if (s < 60) return `${s} วิ`;
   const m = Math.round(s / 60);
-  if (m < 60) return `${m} นาทีที่แล้ว`;
+  if (m < 60) return `${m} นาที`;
   const h = Math.round(m / 60);
-  if (h < 24) return `${h} ชม.ที่แล้ว`;
-  return `${Math.round(h / 24)} วันที่แล้ว`;
+  if (h < 24) return `${h} ชม.`;
+  return `${Math.round(h / 24)} วัน`;
 }
 
 /**
- * What is running and since when. The maker's glance-check that the school is
+ * What is running, and since when — the maker's glance-check that the school is
  * still being tended rather than quietly stopped days ago.
  */
 export function Footer() {
   const b = usePoll<BuildInfo>('/api/build', 30_000);
-  if (!b) return <footer className="build" />;
+  if (!b) return <footer className="h-8 shrink-0 border-t border-border" />;
+
+  const committed = new Date(b.committedAt).toLocaleString('th-TH');
+  const started = new Date(b.startedAt).toLocaleString('th-TH');
 
   return (
-    <footer className="build">
-      <span title={new Date(b.committedAt).toLocaleString('th-TH')}>
-        <code>{b.shortSha}</code>
-        {b.dirty ? <span className="dirty" title="มีไฟล์ที่ยังไม่ commit">*</span> : null}{' '}
-        <span className="subject">{b.subject}</span>
+    <footer className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-t border-border bg-sidebar px-3 py-1.5 text-[11px] text-muted-foreground">
+      <span title={committed} className="font-mono text-primary">
+        {b.shortSha}
+        {b.dirty ? <span className="text-[var(--warn)]" title="ยังมีไฟล์ที่ไม่ได้ commit">*</span> : null}
       </span>
-      <span className="when" title={new Date(b.committedAt).toLocaleString('th-TH')}>
-        commit {ago(b.now - b.committedAt)}
+      <span className="min-w-0 max-w-[55vw] truncate text-foreground md:max-w-none" title={b.subject}>
+        {b.subject}
       </span>
-      <span className="when" title={new Date(b.startedAt).toLocaleString('th-TH')}>
-        deploy {ago(b.now - b.startedAt)}
+      <span className="ml-auto whitespace-nowrap" title={committed}>
+        commit {ago(b.now - b.committedAt)}ที่แล้ว
       </span>
-      <span className="when">{b.branch}</span>
+      <span className="whitespace-nowrap" title={started}>
+        deploy {ago(b.now - b.startedAt)}ที่แล้ว
+      </span>
     </footer>
   );
 }

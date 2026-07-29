@@ -3,8 +3,9 @@
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 
-import type { Brain, GraphNode } from '../_components/types.ts';
-import { fmt, KIND } from '../_components/types.ts';
+import type { Brain, GraphNode } from '../_components/types';
+import { Button } from '@/components/ui/button';
+import { fmt, KIND } from '../_components/types';
 
 interface Point {
   x: number;
@@ -269,40 +270,61 @@ function BrainView() {
   const kind = selected ? (KIND[selected.kind] ?? { color: '#8b949e', label: selected.kind }) : null;
 
   return (
-    <section className="view">
-      <div className="legend">
+    <section className="relative flex h-full flex-col">
+      {/* The legend is a scrolling strip on a phone, not a wrapped block that
+          eats a third of the canvas. */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex gap-3 overflow-x-auto px-3 py-2 text-[10px] text-muted-foreground [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {Object.values(KIND).map((k) => (
-          <span key={k.label} style={{ color: k.color }}>
-            {k.label}
+          <span key={k.label} className="whitespace-nowrap" style={{ color: k.color }}>
+            ● {k.label}
           </span>
         ))}
       </div>
-      <canvas ref={canvasRef} onClick={onCanvasClick} />
-      <div className={`detail ${selected ? 'on' : ''}`}>
-        {selected && kind ? (
-          <>
-            <h3 style={{ color: kind.color }}>{selected.title}</h3>
-            <div className="meta">
-              {kind.label} · มั่นใจ {selected.confidence}
-              {selected.status ? ` · ${selected.status}` : ''} · {fmt(selected.createdAt)}
-            </div>
-            <p>{selected.body}</p>
-          </>
-        ) : null}
-      </div>
-      <div className="timeline">
-        <button onClick={() => void play()}>{playing ? '⏸ หยุด' : '▶ เล่นย้อนหนัง'}</button>
+
+      <canvas ref={canvasRef} onClick={onCanvasClick} className="min-h-0 w-full flex-1" />
+
+      {selected && kind ? (
+        <div className="absolute inset-x-2 bottom-24 z-20 max-h-[45%] overflow-y-auto rounded-lg border border-border bg-popover/95 p-3 shadow-lg md:inset-x-auto md:right-4 md:top-10 md:bottom-auto md:w-80">
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="text-sm font-semibold" style={{ color: kind.color }}>
+              {selected.title}
+            </h3>
+            <button
+              onClick={() => {
+                selectedRef.current = null;
+                setSelected(null);
+              }}
+              aria-label="ปิด"
+              className="-mr-1 -mt-1 inline-flex size-9 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
+            >
+              ✕
+            </button>
+          </div>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            {kind.label} · มั่นใจ {selected.confidence}
+            {selected.status ? ` · ${selected.status}` : ''} · {fmt(selected.createdAt)}
+          </p>
+          <p className="mt-2 whitespace-pre-wrap text-sm">{selected.body}</p>
+        </div>
+      ) : null}
+
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border px-3 py-2">
+        <Button variant="secondary" size="sm" onClick={() => void play()}>
+          {playing ? '⏸ หยุด' : '▶ เล่นย้อนหนัง'}
+        </Button>
         <input
           type="range"
           min={0}
           max={100}
           value={pct}
+          aria-label="เลื่อนเวลา"
           onChange={(e) => scrub(Number(e.target.value))}
+          className="h-9 min-w-32 flex-1 accent-primary"
         />
-        <span className="when">
+        <span className="w-full text-[11px] text-muted-foreground md:w-auto">
           {live ? (
             <>
-              <span className="live">● สด</span> · {counts.total} events
+              <span className="text-[var(--ok)]">● สด</span> · {counts.total} events
             </>
           ) : (
             `${fmt(atTime)} · ${counts.shown}/${counts.total} events`

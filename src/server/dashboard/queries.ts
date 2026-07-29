@@ -14,7 +14,18 @@ import { buildLibrary, librarySummary, type ClaimRecord } from '../../core/schoo
 import { alphaReport } from '../../core/trading/benchmark.ts';
 import { portfolioValue } from '../../core/trading/portfolio.ts';
 import { dayKey, minuteOfDay, planDay } from '../scheduler.ts';
-import { config, events, ledger, principalLog, sdkLog, strategies, students, trading } from './context.ts';
+import {
+  config,
+  events,
+  ledger,
+  principalLog,
+  roster,
+  sdkLog,
+  settings,
+  strategies,
+  students,
+  trading,
+} from './context.ts';
 
 function timeBounds(log: readonly GraphEvent[]): { first: number; last: number } {
   const first = log[0]?.at ?? 0;
@@ -131,7 +142,8 @@ export function schedule(at: number) {
     ledger.day(day).map((r) => [`${r.studentId}:${r.kind}:${r.minuteOfDay}`, r]),
   );
 
-  const slots = planDay(config.schedule).map((slot) => ({
+  const active = settings.schedule(config.schedule);
+  const slots = planDay(active).map((slot) => ({
     minuteOfDay: slot.minuteOfDay,
     kind: slot.kind,
     students: roster.map((student) => {
@@ -157,7 +169,7 @@ export function schedule(at: number) {
     }),
   }));
 
-  return { day, now: at, nowMinute, schedule: config.schedule, slots, history: ledger.dayCounts(14) };
+  return { day, now: at, nowMinute, schedule: active, slots, history: ledger.dayCounts(14) };
 }
 
 export function principalRounds() {
@@ -172,5 +184,21 @@ export function sdkCalls(studentId: string | null) {
   return {
     calls: studentId ? sdkLog.forStudent(studentId, 50) : sdkLog.recent(50),
     summary: sdkLog.summary(),
+  };
+}
+
+/** The roster as the maker manages it, including suspended and expelled. */
+export function rosterView() {
+  return {
+    students: roster.all().map((s) => ({
+      id: s.id,
+      name: s.name,
+      energy: Math.round(s.energy),
+      enrolledAt: s.enrolledAt,
+      suspended: s.suspended,
+      expelled: s.expelled,
+      traits: describePersonality(s.personality),
+    })),
+    startingAllowance: config.metabolism.startingAllowance,
   };
 }

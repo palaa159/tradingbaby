@@ -14,6 +14,8 @@
 import { openAcademy } from './academy.ts';
 import { DEFAULT_ACADEMY } from './academyConfig.ts';
 import { SqliteCycleLedger } from './db/cycleLedger.ts';
+import { Roster } from './db/roster.ts';
+import { SettingsStore } from './db/settingsStore.ts';
 import type { CycleKind } from './engine/prompts.ts';
 import { AcademyBell, dayKey, msUntilNextDay } from './scheduler.ts';
 import { Metabolism } from './trading/settlement.ts';
@@ -27,19 +29,22 @@ const config = DEFAULT_ACADEMY;
 const academy = openAcademy(config, arg('db') ?? 'academy.db');
 const ledger = new SqliteCycleLedger(academy.db);
 const metabolism = new Metabolism(academy.db, config.metabolism);
+const settings = new SettingsStore(academy.db);
+const roster = new Roster(academy.db);
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
 
-// Enrol once at boot so the roster exists before the first bell; each cycle
-// reloads the student anyway, to pick up energy spent since.
-const roster = config.students.map((s) => academy.enroll(s.name, s.seed));
-const byId = new Map(roster.map((s) => [s.id, s]));
+// Enrol the configured class once at boot so the roster exists before the first
+// bell. Who actually attends is read fresh each day from the roster, so a
+// student the maker enrols or expels on the dashboard takes effect tomorrow.
+for (const s of config.students) academy.enroll(s.name, s.seed);
 
 async function runOne(studentId: string, kind: CycleKind): Promise<void> {
-  const known = byId.get(studentId);
+  const known = roster.get(studentId);
   if (!known) throw new Error(`unknown student: ${studentId}`);
+  if (known.expelled) throw new Error('ออกจากโรงเรียนแล้ว');
   // Suspension is what makes the energy real: no thinking until the maker
   // revives them. The bell writes the reason to the ledger.
   if (metabolism.isSuspended(studentId)) throw new Error('พักการเรียนอยู่ — รอคนสร้างให้กลับมาเรียน');
@@ -53,26 +58,29 @@ async function runOne(studentId: string, kind: CycleKind): Promise<void> {
   );
 }
 
-const bell = new AcademyBell(config.schedule, {
-  runCycle: runOne,
-  ledger,
-  now: Date.now,
-  sleep,
-});
+
 
 console.log(
-  `🔔 โรงเรียนเปิดแล้ว — นักเรียน ${roster.length} คน: ${roster.map((s) => s.name).join(', ')}`,
-);
-console.log(
-  `   รอบสั้น ${config.schedule.shortCyclesPerDay} รอบ/คน/วัน · ` +
-    `ทบทวน ${Math.floor(config.schedule.dailyReviewMinute / 60)}:00 · ` +
-    `ตื่น ${Math.floor(config.schedule.wakingWindow[0] / 60)}:00-${Math.floor(config.schedule.wakingWindow[1] / 60)}:00`,
+  `🔔 โรงเรียนเปิดแล้ว — นักเรียน ${roster.active().length} คน: ${roster
+    .active()
+    .map((s) => s.name)
+    .join(', ')}`,
 );
 
 for (;;) {
   const day = dayKey(Date.now());
-  console.log(`\n📅 ${day}`);
-  await bell.runDay(roster.map((s) => s.id));
+  // Settings and roster are read per day, not per boot: the maker changing the
+  // pace on the dashboard should not need a redeploy to take hold.
+  const schedule = settings.schedule(config.schedule);
+  const attending = roster.active();
+  const bell = new AcademyBell(schedule, { runCycle: runOne, ledger, now: Date.now, sleep });
+
+  console.log(
+    `\n📅 ${day} — นักเรียน ${attending.length} คน · รอบสั้น ${schedule.shortCyclesPerDay}/คน · ` +
+      `ตื่น ${Math.floor(schedule.wakingWindow[0] / 60)}:00-${Math.floor(schedule.wakingWindow[1] / 60)}:00 · ` +
+      `ทบทวน ${Math.floor(schedule.dailyReviewMinute / 60)}:00`,
+  );
+  await bell.runDay(attending.map((s) => s.id));
 
   const done = ledger.day(day);
   console.log(

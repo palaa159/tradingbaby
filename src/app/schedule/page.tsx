@@ -1,74 +1,84 @@
 'use client';
 
-import type { ScheduleData } from '../_components/types.ts';
-import { hhmm } from '../_components/types.ts';
-import { usePoll } from '../_components/usePoll.ts';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { hhmm, type ScheduleData } from '../_components/types';
+import { usePoll } from '../_components/usePoll';
 
-const STATUS: Record<string, [string, string]> = {
-  done: ['รันแล้ว', 'var(--ok)'],
-  skipped: ['ข้าม', 'var(--bad)'],
-  upcoming: ['รอถึงคาบ', 'var(--dim)'],
-  late: ['เลยเวลา', 'var(--warn)'],
+const STATUS: Record<string, { label: string; className: string }> = {
+  done: { label: 'รันแล้ว', className: 'text-[var(--ok)] border-[var(--ok)]/40' },
+  skipped: { label: 'ข้าม', className: 'text-[var(--bad)] border-[var(--bad)]/40' },
+  upcoming: { label: 'รอถึงคาบ', className: 'text-muted-foreground' },
+  late: { label: 'เลยเวลา', className: 'text-[var(--warn)] border-[var(--warn)]/40' },
 };
 
 export default function Page() {
   const d = usePoll<ScheduleData>('/api/schedule');
-  if (!d) return <section className="view trades" />;
+  if (!d) return <div className="p-4 text-sm text-muted-foreground">กำลังโหลด…</div>;
 
   return (
-    <section className="view trades">
-      <div className="stats" style={{ gap: 18, marginBottom: 16, fontSize: 13 }}>
+    <div className="h-full overflow-y-auto p-3 md:p-5">
+      <div className="mb-4 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <span>วันนี้ {d.day}</span>
         <span>ตอนนี้ {hhmm(d.nowMinute)}</span>
         <span>
-          ตื่น {hhmm(d.schedule.wakingWindow[0] ?? 0)}-{hhmm(d.schedule.wakingWindow[1] ?? 0)}
+          ตื่น {hhmm(d.schedule.wakingWindow[0] ?? 0)}–{hhmm(d.schedule.wakingWindow[1] ?? 0)}
         </span>
         <span>รอบสั้น {d.schedule.shortCyclesPerDay}/คน/วัน</span>
-        <span style={{ marginLeft: 'auto' }}>ทบทวน {hhmm(d.schedule.dailyReviewMinute)}</span>
+        <span>ทบทวน {hhmm(d.schedule.dailyReviewMinute)}</span>
       </div>
 
-      <table>
-        <tbody>
-          <tr><th>เวลา</th><th>รอบ</th><th>นักเรียน</th></tr>
-          {d.slots.map((slot) => (
-            <tr key={`${slot.kind}-${slot.minuteOfDay}`}>
-              <td style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
-                {hhmm(slot.minuteOfDay)}
-              </td>
-              <td>{slot.kind === 'short' ? 'รอบสั้น' : 'ทบทวนประจำวัน'}</td>
-              <td className="why">
-                {slot.students.map((s) => {
-                  const [label, color] = STATUS[s.status] ?? [s.status, 'var(--dim)'];
-                  return (
-                    <div key={s.id}>
-                      {s.name} <span style={{ color, fontWeight: 600 }}>{label}</span>
-                      {s.reason ? <span style={{ color: 'var(--dim)' }}> — {s.reason}</span> : null}
-                    </div>
-                  );
-                })}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {/* One card per bell reads far better on a phone than a wide table. */}
+      <div className="flex flex-col gap-2">
+        {d.slots.map((slot) => (
+          <Card key={`${slot.kind}-${slot.minuteOfDay}`} className="gap-0 py-3">
+            <CardHeader className="px-3 pb-2">
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <span className="font-mono tabular-nums">{hhmm(slot.minuteOfDay)}</span>
+                <span className="font-normal text-muted-foreground">
+                  {slot.kind === 'short' ? 'รอบสั้น' : 'ทบทวนประจำวัน'}
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-1.5 px-3">
+              {slot.students.map((s) => {
+                const st = STATUS[s.status] ?? { label: s.status, className: '' };
+                return (
+                  <div key={s.id} className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="min-w-20">{s.name}</span>
+                    <Badge variant="outline" className={`text-[10px] ${st.className}`}>
+                      {st.label}
+                    </Badge>
+                    {s.reason ? (
+                      <span className="text-[11px] text-muted-foreground">{s.reason}</span>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        ))}
+      </div>
 
       {d.history.length ? (
         <>
-          <h4 style={{ margin: '22px 0 8px' }}>ย้อนหลัง</h4>
-          <table>
-            <tbody>
-              <tr><th>วัน</th><th>รันแล้ว</th><th>ข้าม</th></tr>
-              {d.history.map((h) => (
-                <tr key={h.day}>
-                  <td>{h.day}</td>
-                  <td style={{ color: 'var(--ok)' }}>{h.done}</td>
-                  <td style={{ color: h.skipped ? 'var(--bad)' : 'var(--dim)' }}>{h.skipped}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <h2 className="mb-2 mt-6 text-sm font-medium text-muted-foreground">ย้อนหลัง</h2>
+          <div className="flex flex-col gap-1">
+            {d.history.map((h) => (
+              <div
+                key={h.day}
+                className="flex items-center gap-4 rounded-md border border-border px-3 py-2 text-sm"
+              >
+                <span className="font-mono">{h.day}</span>
+                <span className="text-[var(--ok)]">รันแล้ว {h.done}</span>
+                <span className={h.skipped ? 'text-[var(--bad)]' : 'text-muted-foreground'}>
+                  ข้าม {h.skipped}
+                </span>
+              </div>
+            ))}
+          </div>
         </>
       ) : null}
-    </section>
+    </div>
   );
 }

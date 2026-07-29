@@ -12,6 +12,7 @@
 
 import type { Candle } from '../core/strategy/types.ts';
 import { DEFAULT_ACADEMY } from './academyConfig.ts';
+import { Roster } from './db/roster.ts';
 import { openAcademyDb, StudentStore } from './db/sqliteStore.ts';
 import { StrategyStore } from './db/strategyStore.ts';
 import { TradingStore } from './db/tradingStore.ts';
@@ -30,6 +31,7 @@ const db = openAcademyDb(arg('db') ?? 'academy.db');
 const students = new StudentStore(db);
 const strategies = new StrategyStore(db);
 const trading = new TradingStore(db);
+const roster = new Roster(db);
 const metabolism = new Metabolism(db, config.metabolism);
 const market = defaultMarketData(config.universe);
 
@@ -63,7 +65,8 @@ async function round(): Promise<void> {
 
   const results = tradingRound(
     {
-      studentIds: students.list().map((s) => s.id),
+      // Expelled students stop trading too, not just thinking.
+      studentIds: roster.active().map((s) => s.id),
       candles,
       at,
       day: dayKey(at),
