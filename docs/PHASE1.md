@@ -19,10 +19,19 @@ No trading yet. Suspension disabled — hunger is display-only.
 - [x] Smoke-tested with a real cycle: student "มะลิ" ran a short cycle, browsed, and wrote 13 events into her brain
 - [x] Runtime: **Bun** (`bun test`, `bun src/server/index.ts`) with TypeScript 7 typechecking and latest deps
 
-### M3 — Persistence
-- [ ] SQLite (prototype) with nodes / edges / events tables
-- [ ] Event replay → graph state at any timestamp
-- [ ] Persist student state (energy, enrollment) between processes
+### M3 — Persistence (done)
+- [x] SQLite via `bun:sqlite` (`academy.db`): append-only `events` table as the
+      single source of truth, plus `students` for enrollment and energy
+- [x] Event replay → graph state at any timestamp, unchanged against persisted events
+- [x] Student state (energy, enrollment date) survives between processes;
+      personality always re-derived from the seed, never stored
+- [x] Proven end-to-end: three real cycles on one database — มะลิ opened cycle 2
+      with "สมองมี 9 events", pulled her own question off the queue, researched it,
+      wrote a `lesson` ("ห้ามเชื่อ pattern เดียวตาบอด"), and spawned new questions
+      from what she learned. Brain now ~19 nodes / 17 edges.
+
+Deliberately not materializing `nodes`/`edges` tables yet: replay is fast at this
+scale and the event log is authoritative. Add them when query cost shows up.
 
 ### M4 — Market perception (read-only)
 - [x] Free Binance public REST provider behind `MarketDataProvider` interface

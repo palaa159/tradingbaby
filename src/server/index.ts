@@ -1,18 +1,18 @@
 /**
- * Phase 1 entry point — run a single cycle for one student from the CLI:
+ * Phase 1 entry point — run a single cycle for one student:
  *
- *   npm run cycle -- --student=มะลิ --kind=short
- *   npm run cycle -- --student=มะลิ --kind=daily_review
+ *   bun run cycle -- --student=มะลิ --kind=short
+ *   bun run cycle -- --student=มะลิ --kind=daily_review
  *
- * Requires a Claude subscription login (the Agent SDK handles auth).
- * The full scheduler day-loop is wired in once persistence (M3) lands —
- * without it, brains only live for the life of the process.
+ * State lives in academy.db (override with --db=path), so a student's brain
+ * and energy carry over between runs. Requires a Claude subscription login;
+ * the Agent SDK handles auth.
  */
 
-import { MemoryEventStore, replay } from '../core/eventLog.ts';
-import { personalityFromSeed } from '../core/personality.ts';
+import { replay } from '../core/eventLog.ts';
 import type { Student } from '../core/types.ts';
 import { DEFAULT_ACADEMY } from './academyConfig.ts';
+import { openAcademyDb, SqliteEventStore, StudentStore } from './db/sqliteStore.ts';
 import { runCycle } from './engine/studentAgent.ts';
 import type { CycleKind } from './engine/prompts.ts';
 import { BinancePublicMarketData } from './marketData.ts';
@@ -32,18 +32,24 @@ if (!enrollment) {
   process.exit(1);
 }
 
-const student: Student = {
-  id: enrollment.seed,
-  name: enrollment.name,
-  personality: personalityFromSeed(enrollment.seed),
-  energy: config.metabolism.startingAllowance,
-  enrolledAt: Date.now(),
-};
+const db = openAcademyDb(arg('db') ?? 'academy.db');
+const store = new SqliteEventStore(db);
+const students = new StudentStore(db);
 
-const store = new MemoryEventStore();
+const student: Student = students.enroll(
+  enrollment.seed,
+  enrollment.name,
+  config.metabolism.startingAllowance,
+  Date.now(),
+);
+
+const priorEvents = store.count(student.id);
 const market = new BinancePublicMarketData(config.universe);
 
-console.log(`🔔 ${student.name} เริ่ม${kind === 'short' ? 'รอบสั้น' : 'รอบทบทวนประจำวัน'}...`);
+console.log(
+  `🔔 ${student.name} เริ่ม${kind === 'short' ? 'รอบสั้น' : 'รอบทบทวนประจำวัน'} ` +
+    `(พลังงาน ${student.energy}, สมองมี ${priorEvents} events)...`,
+);
 
 const result = await runCycle(kind, {
   student,
@@ -53,16 +59,21 @@ const result = await runCycle(kind, {
   models: config.models,
 });
 
+students.saveEnergy(student.id, result.energyAfter);
+
 console.log('\n--- ผลของรอบ ---');
 console.log(result.summary);
 console.log(
   `\nพลังงานเหลือ: ${result.energyAfter} | ใช้เวลา ${(result.durationMs / 1000).toFixed(1)}s` +
     (result.costUsd !== undefined ? ` | cost $${result.costUsd.toFixed(4)}` : ''),
 );
-const events = store.read(student.id);
-const brain = replay(events);
-console.log(`\n🧠 สมองของ${student.name}ตอนนี้ (${events.length} events):`);
+
+const brain = replay(store.read(student.id));
+const gained = store.count(student.id) - priorEvents;
+console.log(`\n🧠 สมองของ${student.name} (+${gained} events รอบนี้):`);
 for (const node of brain.nodes.values()) {
   console.log(`  [${node.kind}] ${node.title} (มั่นใจ ${node.confidence})`);
 }
 console.log(`  เส้นเชื่อม: ${brain.edges.size}`);
+
+db.close();
