@@ -8,7 +8,8 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "cycle": "bun src/server/index.ts",
-    "dashboard": "bun src/server/dashboard/server.ts"
+    "dashboard": "bun src/server/dashboard/server.ts",
+    "school": "bun src/server/school.ts"
   },
   "devDependencies": {
     "@types/bun": "^1.3.14",
