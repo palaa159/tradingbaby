@@ -1,5 +1,7 @@
 import { redirect } from 'next/navigation';
 
 export default function Page() {
-  redirect('/brain');
+  // The feed answers "what has been happening?", which is the question the
+  // maker opens the dashboard with.
+  redirect('/activity');
 }

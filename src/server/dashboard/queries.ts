@@ -16,6 +16,7 @@ import { portfolioValue } from '../../core/trading/portfolio.ts';
 import { dayKey, minuteOfDay, planDay } from '../scheduler.ts';
 import {
   config,
+  designLog,
   events,
   ledger,
   exams,
@@ -239,4 +240,243 @@ export function examView(studentId: string | null) {
     return { sittings: exams.forStudent(studentId, 20), trend: exams.trend(studentId) };
   }
   return { sittings: exams.recent(40), trend: [] };
+}
+
+/**
+ * The append-only event log, raw (spec §5.1).
+ *
+ * Every other view is a projection of this table — the brain graph is this
+ * replayed, the timeline is this replayed to a cutoff. This is the only view
+ * that shows what was actually written, in the order it was written, which is
+ * the difference between reading the ledger and reading a summary of it.
+ */
+export function eventStream(studentId: string | null, limit = 300, type?: string | null) {
+  const roster = new Map(students.list().map((s) => [s.id, s.name]));
+  const ids = studentId ? [studentId] : [...roster.keys()];
+  const rows: {
+    studentId: string;
+    studentName: string;
+    seq: number;
+    at: number;
+    type: string;
+    title: string;
+    detail: string;
+  }[] = [];
+
+  for (const id of ids) {
+    let seq = 0;
+    for (const event of events.read(id)) {
+      seq += 1;
+      const e = event as unknown as {
+        type: string;
+        at: number;
+        node?: { kind: string; title: string; body: string; confidence: number };
+        edge?: { kind: string; fromNodeId: string; toNodeId: string };
+        nodeId?: string;
+        patch?: Record<string, unknown>;
+      };
+      if (type && e.type !== type) continue;
+      const title =
+        e.node?.title ?? (e.edge ? `${e.edge.fromNodeId} → ${e.edge.toNodeId}` : (e.nodeId ?? ''));
+      const detail =
+        e.node !== undefined
+          ? `[${e.node.kind}] มั่นใจ ${e.node.confidence} · ${e.node.body.slice(0, 160)}`
+          : e.edge !== undefined
+            ? `[${e.edge.kind}]`
+            : JSON.stringify(e.patch ?? {});
+      rows.push({
+        studentId: id,
+        studentName: roster.get(id) ?? id,
+        seq,
+        at: e.at,
+        type: e.type,
+        title,
+        detail,
+      });
+    }
+  }
+
+  rows.sort((a, b) => b.at - a.at || b.seq - a.seq);
+  const counts: Record<string, number> = {};
+  for (const r of rows) counts[r.type] = (counts[r.type] ?? 0) + 1;
+  return { events: rows.slice(0, limit), total: rows.length, counts };
+}
+
+/**
+ * The evaluation record (spec §6.2): every strategy decision with the exact
+ * inputs it saw, which is what makes "re-run this and get the same answer"
+ * checkable rather than a claim.
+ */
+export function evaluationLog(studentId: string | null, limit = 100) {
+  const owners = studentId ? [studentId] : students.list().map((s) => s.id);
+  const rows: unknown[] = [];
+  for (const owner of owners) {
+    for (const strategy of strategies.all(owner)) {
+      const replayCheck = strategies.verifyReplay(strategy.id);
+      for (const ev of strategies.evaluations(strategy.id).slice(-limit)) {
+        rows.push({
+          id: ev.id,
+          at: ev.at,
+          strategyId: strategy.id,
+          version: strategy.version,
+          studentId: owner,
+          symbol: (ev.input as { symbol?: string }).symbol ?? '',
+          orders: (ev.result as { orders?: unknown[] }).orders ?? [],
+          readings: (ev.result as { readings?: Record<string, number> }).readings ?? {},
+          bars: ((ev.input as { candles?: unknown[] }).candles ?? []).length,
+          reproduces: replayCheck.mismatches.every((m) => m !== ev.id),
+        });
+      }
+    }
+  }
+  rows.sort((a, b) => (b as { at: number }).at - (a as { at: number }).at);
+  return { evaluations: rows.slice(0, limit) };
+}
+
+/** Prices the runner marked, the buy-and-hold ruler, and each day's opening value. */
+export function marketLog() {
+  const roster = new Map(students.list().map((s) => [s.id, s.name]));
+  return {
+    prices: trading.lastPrices(),
+    benchmarks: [...roster.entries()].map(([id, name]) => ({
+      studentId: id,
+      studentName: name,
+      benchmark: trading.benchmark(id),
+    })),
+  };
+}
+
+export type ActivityKind =
+  | 'brain'
+  | 'cycle'
+  | 'trade'
+  | 'blocked'
+  | 'exam'
+  | 'principal'
+  | 'design'
+  | 'sdk';
+
+export interface ActivityItem {
+  at: number;
+  kind: ActivityKind;
+  who: string;
+  title: string;
+  detail: string;
+  severity: 'ok' | 'warn' | 'bad' | 'plain';
+}
+
+/**
+ * Everything the academy did, in one stream, newest first.
+ *
+ * The dedicated views each answer one question well; this answers the question
+ * the maker actually opens the dashboard with — "what has been happening?" —
+ * without knowing in advance which of nine screens the answer is on. Anything
+ * the system records should show up here or it is not really being monitored.
+ */
+export function activityFeed(limit = 200): { items: ActivityItem[]; counts: Record<string, number> } {
+  const items: ActivityItem[] = [];
+  const roster = new Map(students.list().map((s) => [s.id, s.name]));
+  const name = (id: string | undefined) => (id ? (roster.get(id) ?? id) : 'โรงเรียน');
+
+  for (const [id, who] of roster) {
+    for (const event of events.read(id)) {
+      const e = event as unknown as {
+        type: string;
+        at: number;
+        node?: { kind: string; title: string };
+        edge?: { kind: string };
+        nodeId?: string;
+      };
+      items.push({
+        at: e.at,
+        kind: 'brain',
+        who,
+        title: e.node?.title ?? (e.edge ? `เชื่อม ${e.edge.kind}` : `แก้ ${e.nodeId ?? ''}`),
+        detail: e.node ? `จดโน้ต [${e.node.kind}]` : e.type,
+        severity: 'plain',
+      });
+    }
+
+    for (const fill of trading.fills(id)) {
+      items.push({
+        at: fill.at,
+        kind: 'trade',
+        who,
+        title: `${fill.side === 'buy' ? 'ซื้อ' : 'ขาย'} ${fill.symbol} ${fill.quantity.toFixed(4)} @ ${fill.price.toFixed(2)}`,
+        detail: fill.reason,
+        severity: fill.side === 'buy' ? 'ok' : 'plain',
+      });
+    }
+    for (const b of trading.blocked(id)) {
+      items.push({
+        at: b.at,
+        kind: 'blocked',
+        who,
+        title: `กติกาบ้านห้าม ${b.side} ${b.symbol}`,
+        detail: b.reason,
+        severity: 'warn',
+      });
+    }
+    for (const s of exams.forStudent(id, 20)) {
+      items.push({
+        at: s.at,
+        kind: 'exam',
+        who,
+        title: `สอบเสร็จ — เฉลี่ย ${s.averageScore}`,
+        detail: `${s.answered} ข้อ · ทายถูก ${s.actionAccuracy}%`,
+        severity: s.averageScore >= 60 ? 'ok' : s.averageScore >= 40 ? 'warn' : 'bad',
+      });
+    }
+  }
+
+  for (const run of ledger.dayCounts(30).flatMap((d) => ledger.day(d.day))) {
+    items.push({
+      at: run.at,
+      kind: 'cycle',
+      who: name(run.studentId),
+      title: `${run.kind === 'short' ? 'รอบสั้น' : 'รอบทบทวน'} ${run.status === 'done' ? 'รันแล้ว' : 'ข้าม'}`,
+      detail: run.reason ?? '',
+      severity: run.status === 'done' ? 'ok' : 'warn',
+    });
+  }
+
+  for (const r of principalLog.recent(30)) {
+    items.push({
+      at: r.at,
+      kind: 'principal',
+      who: 'ครูใหญ่',
+      title: `ออกตรวจ — ${r.overall}`,
+      detail: r.checks.map((c) => c.name).join(' · '),
+      severity: r.overall === 'ok' ? 'ok' : r.overall === 'warn' ? 'warn' : 'bad',
+    });
+  }
+
+  for (const r of designLog.recent(30)) {
+    items.push({
+      at: r.at,
+      kind: 'design',
+      who: 'Maker Designer',
+      title: `ตรวจหน้าจอ — ${r.outcome}`,
+      detail: r.note || `${r.hardFlags.length} ปัญหาที่วัดได้`,
+      severity: r.outcome === 'changed' ? 'ok' : r.outcome === 'clean' ? 'plain' : 'warn',
+    });
+  }
+
+  for (const c of sdkLog.recent(60)) {
+    items.push({
+      at: c.at,
+      kind: 'sdk',
+      who: name(c.studentId),
+      title: `เรียก AI ${c.caller} (${c.model})`,
+      detail:
+        `${c.numTurns ?? 0} turns · ${(c.durationMs / 1000).toFixed(1)}s` +
+        (c.costUsd !== undefined ? ` · $${c.costUsd.toFixed(4)}` : ''),
+      severity: c.isError ? 'bad' : 'plain',
+    });
+  }
+
+  items.sort((a, b) => b.at - a.at);
+  const counts: Record<string, number> = {};
+  for (const i of items) counts[i.kind] = (counts[i.kind] ?? 0) + 1;
+  return { items: items.slice(0, limit), counts };
 }

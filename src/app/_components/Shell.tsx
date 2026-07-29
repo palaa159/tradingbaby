@@ -12,6 +12,7 @@ import type { StudentCard } from './types';
 import { usePoll } from './usePoll';
 
 const VIEWS = [
+  { href: '/activity', label: 'ทั้งหมด' },
   { href: '/brain', label: 'สมอง' },
   { href: '/trades', label: 'เทรด' },
   { href: '/library', label: 'ห้องสมุด' },
@@ -22,6 +23,10 @@ const VIEWS = [
   { href: '/principal', label: 'ครูใหญ่' },
   { href: '/calls', label: 'บันทึก AI' },
   { href: '/roster', label: 'นักเรียน' },
+  { href: '/market', label: 'ตลาด' },
+  { href: '/events', label: 'สมุดเหตุการณ์' },
+  { href: '/design', label: 'ออกแบบ' },
+  { href: '/logs', label: 'log ระบบ' },
   { href: '/settings', label: 'ตั้งค่า' },
 ] as const;
 
@@ -134,7 +139,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <Roster current={current} />
       </aside>
 
-      <div className="flex min-h-0 flex-1 flex-col">
+      {/* min-w-0: a grid child defaults to min-width:auto, so without this the
+          nav's natural width pushes the column past 1fr and the whole page
+          scrolls sideways instead of the tab strip scrolling inside it. */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="flex items-center gap-2 border-b border-border px-3 py-2 md:hidden">
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger
