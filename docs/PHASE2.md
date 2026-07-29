@@ -53,11 +53,36 @@ Still open: wiring `judge()` into the student's graph so verdicts update the
 `hypothesis` node's confidence and status with the backtest as linked evidence
 (needs the student-facing tool, arrives with P3).
 
-## P3 — Paper trading + guardrails
+## P3 — Paper trading + guardrails (done)
 
-- [ ] Paper portfolio: positions, fills, realized/unrealized P&L
-- [ ] Guardrail engine: max position size, max daily loss, spot-only, kill switch
-- [ ] Decision traces linking every fill to the strategy version and its knowledge
+- [x] Paper portfolio derived from fills, never stored separately — replay the
+      fills and you get the state, the same way replaying the event log gives you
+      a brain. Average cost basis with fees, realized/unrealized split, and
+      selling more than held closes out rather than flipping short
+- [x] Guardrail engine: max position size, max daily loss, spot-only, kill switch.
+      **Size violations clamp, hard violations refuse** — a strategy asking 50%
+      when the house allows 20% still trades, at 20, and the trace says it was
+      clamped. There is no smaller version of "shorting", so those are refused
+- [x] Refusals are persisted too: `blocked_orders` keeps what the rules stopped,
+      so the maker sees the near-misses and not just the fills
+- [x] Decision traces: every fill records its strategy version and rule. From
+      there the chain completes itself — the strategy carries the hypotheses it
+      was compiled from, and those carry sources and lessons in the graph
+- [x] `tick()` composes it all with no LLM in the path (spec §6.2): free to run,
+      always decides the same way
+
+**Measured** (230 ticks over a deterministic oscillating market):
+
+| Metric | Result |
+|---|---|
+| Fills | 9 |
+| Clamped by house rules | 5 (50% request → 20%) |
+| Blocked outright | 0 |
+| Portfolio | 1000 → 966.48 (−3.35%), fees 1.77 |
+| Replay check | 230 evaluations, 0 mismatches |
+
+The strategy lost money, and the system says so — no flattery. That is exactly
+the input `judge()` needs to debunk it.
 
 ## P4 — Metabolism v2
 
