@@ -18,6 +18,7 @@ import {
   config,
   events,
   ledger,
+  exams,
   principalLog,
   roster,
   sdkLog,
@@ -201,4 +202,41 @@ export function rosterView() {
     })),
     startingAllowance: config.metabolism.startingAllowance,
   };
+}
+
+/**
+ * The request box (spec §9.4). Students write feature_request notes when a tool
+ * fails them or they want a new one; until the Principal grows hands, these pile
+ * up for the maker to read and act on by hand — which needs somewhere to read
+ * them, not just a count.
+ */
+export function requestBox() {
+  const open: unknown[] = [];
+  const answered: unknown[] = [];
+  for (const student of students.list()) {
+    const brain = replay(events.read(student.id));
+    for (const node of brain.nodes.values()) {
+      if (node.kind !== 'feature_request') continue;
+      const entry = {
+        id: node.id,
+        studentId: student.id,
+        studentName: student.name,
+        title: node.title,
+        body: node.body,
+        status: node.status ?? 'untested',
+        at: node.createdAt,
+      };
+      if (node.status === 'answered') answered.push(entry);
+      else open.push(entry);
+    }
+  }
+  return { open, answered };
+}
+
+/** Report cards, kept rather than printed (spec §7). */
+export function examView(studentId: string | null) {
+  if (studentId) {
+    return { sittings: exams.forStudent(studentId, 20), trend: exams.trend(studentId) };
+  }
+  return { sittings: exams.recent(40), trend: [] };
 }

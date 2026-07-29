@@ -17,6 +17,8 @@ const VIEWS = [
   { href: '/library', label: 'ห้องสมุด' },
   { href: '/diary', label: 'ไดอารี่' },
   { href: '/schedule', label: 'ตารางเรียน' },
+  { href: '/exams', label: 'สมุดพก' },
+  { href: '/requests', label: 'คำร้อง' },
   { href: '/principal', label: 'ครูใหญ่' },
   { href: '/calls', label: 'บันทึก AI' },
   { href: '/roster', label: 'นักเรียน' },

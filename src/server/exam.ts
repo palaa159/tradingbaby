@@ -12,6 +12,7 @@ import type { ExamQuestion, GradedAnswer } from '../core/exam/types.ts';
 import type { Candle } from '../core/strategy/types.ts';
 import type { Student } from '../core/types.ts';
 import { DEFAULT_ACADEMY } from './academyConfig.ts';
+import { ExamStore } from './db/examStore.ts';
 import { SdkLog } from './db/sdkLog.ts';
 import { openAcademyDb, SqliteEventStore, StudentStore } from './db/sqliteStore.ts';
 import type { GraphOpsContext } from './engine/graphOps.ts';
@@ -27,6 +28,7 @@ const db = openAcademyDb(arg('db') ?? 'academy.db');
 const store = new SqliteEventStore(db);
 const students = new StudentStore(db);
 const sdkLog = new SdkLog(db);
+const exams = new ExamStore(db);
 const wanted = Number(arg('questions') ?? 2);
 
 // Questions come from a deterministic synthetic series unless a candle file is
@@ -84,6 +86,8 @@ for (const student of roster) {
   }
 
   const card = buildReportCard(student.id, graded, citations);
+  // The card outlives the terminal it was printed to (spec §7).
+  exams.record(card, graded, Date.now());
   console.log(
     `  📔 สมุดพก${student.name}: เฉลี่ย ${card.averageScore} · ทายถูก ${card.actionAccuracy}%` +
       (card.mostCited[0] ? ` · พึ่งโน้ต ${card.mostCited[0].nodeId} บ่อยสุด` : ''),
