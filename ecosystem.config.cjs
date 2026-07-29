@@ -75,6 +75,10 @@ module.exports = {
         '--tls-cert=/etc/alpha-academy/origin.crt',
         '--tls-key=/etc/alpha-academy/origin.key',
       ],
+      // Same clock as the daemon. planDay, minuteOfDay and dayKey are all local
+      // time, so a dashboard on UTC would call the wrong slots late and, near
+      // midnight, read a different day's ledger than the one being written.
+      env: { TZ: 'Asia/Bangkok' },
       autorestart: true,
       restart_delay: 5000,
       out_file: '/var/log/alpha-dashboard.log',
