@@ -1,0 +1,92 @@
+/**
+ * Strategy DSL (spec §6.2, §14.6).
+ *
+ * A rule language rather than sandboxed code: safe to execute, cheap to
+ * validate, trivial to replay, and readable by the maker in the dashboard.
+ * Students author these as JSON; the engine is the only thing that runs them.
+ */
+
+export type IndicatorName = 'price' | 'volume' | 'rsi' | 'sma' | 'ema';
+
+export type Operand =
+  | { kind: 'indicator'; name: IndicatorName; period?: number }
+  | { kind: 'number'; value: number };
+
+export type CompareOp = '<' | '<=' | '>' | '>=' | 'crosses_above' | 'crosses_below';
+
+export interface Condition {
+  left: Operand;
+  op: CompareOp;
+  right: Operand;
+}
+
+/**
+ * Entry conditions are ANDed; exit conditions are ORed. Deliberately not a
+ * general boolean tree — that shape covers real strategies and keeps both the
+ * evaluator and the student's mental model simple.
+ */
+export interface StrategySpec {
+  name: string;
+  symbols: string[];
+  /** Candle interval the rules read, e.g. "1h", "4h". */
+  timeframe: string;
+  entry: Condition[];
+  exit: Condition[];
+  /** Position size as a percent of portfolio value, 0–100. */
+  sizePct: number;
+}
+
+export type StrategyStatus = 'active' | 'retired';
+
+/** An activated strategy is immutable — changes ship as a new version. */
+export interface StrategyVersion {
+  id: string;
+  studentId: string;
+  version: number;
+  spec: StrategySpec;
+  status: StrategyStatus;
+  /** Hypothesis nodes this was compiled from (spec §4.4). */
+  fromHypothesisIds: string[];
+  activatedAt: number;
+  retiredAt?: number;
+}
+
+export type OrderSide = 'buy' | 'sell';
+
+export interface Order {
+  symbol: string;
+  side: OrderSide;
+  /** Fraction of portfolio value for buys; for sells, fraction of the position. */
+  sizePct: number;
+  reason: string;
+}
+
+/** Everything an evaluation reads. Recorded verbatim so replay is exact. */
+export interface EvaluationInput {
+  symbol: string;
+  /** Oldest first; the last candle is the one being decided on. */
+  candles: Candle[];
+  position: Position | null;
+  portfolioValue: number;
+}
+
+export interface Candle {
+  openTime: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export interface Position {
+  symbol: string;
+  quantity: number;
+  avgPrice: number;
+}
+
+export interface EvaluationResult {
+  orders: Order[];
+  /** Indicator values that drove the decision — shown in the decision trace. */
+  readings: Record<string, number>;
+}
