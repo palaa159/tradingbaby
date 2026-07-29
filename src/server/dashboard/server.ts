@@ -1,0 +1,114 @@
+/**
+ * Maker dashboard (Phase 1 M5) — read-only window into the academy.
+ *
+ *   bun run dashboard            # http://localhost:4173
+ *   bun run dashboard -- --db=path --port=4173
+ *
+ * Read-only by design (spec §8): the maker observes, never edits knowledge.
+ * Every route replays the append-only event log, so the timeline slider is
+ * not a separate feature — it is the same query with a different `at`.
+ */
+
+import { replay, type GraphEvent } from '../../core/eventLog.ts';
+import { hungerState } from '../../core/metabolism.ts';
+import { describePersonality } from '../../core/personality.ts';
+import { DEFAULT_ACADEMY } from '../academyConfig.ts';
+import { openAcademyDb, SqliteEventStore, StudentStore } from '../db/sqliteStore.ts';
+
+function arg(name: string): string | undefined {
+  const prefix = `--${name}=`;
+  return process.argv.find((a) => a.startsWith(prefix))?.slice(prefix.length);
+}
+
+const config = DEFAULT_ACADEMY;
+const db = openAcademyDb(arg('db') ?? 'academy.db');
+const events = new SqliteEventStore(db);
+const students = new StudentStore(db);
+const port = Number(arg('port') ?? 4173);
+
+const html = await Bun.file(new URL('./index.html', import.meta.url)).text();
+
+function json(data: unknown): Response {
+  return new Response(JSON.stringify(data), {
+    headers: { 'content-type': 'application/json; charset=utf-8' },
+  });
+}
+
+function timeBounds(log: readonly GraphEvent[]): { first: number; last: number } {
+  const first = log[0]?.at ?? 0;
+  const last = log[log.length - 1]?.at ?? 0;
+  return { first, last };
+}
+
+function classroom() {
+  return students.list().map((student) => {
+    const log = events.read(student.id);
+    const brain = replay(log);
+    const diary = [...brain.nodes.values()]
+      .filter((n) => n.kind === 'diary_entry')
+      .sort((a, b) => b.createdAt - a.createdAt);
+    const latest = diary[0];
+
+    return {
+      id: student.id,
+      name: student.name,
+      energy: Math.round(student.energy),
+      maxEnergy: config.metabolism.startingAllowance,
+      hunger: hungerState(student.energy, config.metabolism),
+      traits: describePersonality(student.personality),
+      enrolledAt: student.enrolledAt,
+      eventCount: log.length,
+      nodeCount: brain.nodes.size,
+      edgeCount: brain.edges.size,
+      latestDiary: latest ? { title: latest.title, body: latest.body, at: latest.createdAt } : null,
+      bounds: timeBounds(log),
+    };
+  });
+}
+
+const server = Bun.serve({
+  port,
+  async fetch(request) {
+    const url = new URL(request.url);
+
+    if (url.pathname === '/') {
+      return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+    }
+
+    if (url.pathname === '/api/students') {
+      return json(classroom());
+    }
+
+    if (url.pathname === '/api/brain') {
+      const studentId = url.searchParams.get('student');
+      if (!studentId) return json({ error: 'student required' });
+      const log = events.read(studentId);
+      const atParam = url.searchParams.get('at');
+      const at = atParam ? Number(atParam) : Infinity;
+      const brain = replay(log, at);
+      return json({
+        nodes: [...brain.nodes.values()],
+        edges: [...brain.edges.values()],
+        bounds: timeBounds(log),
+        total: log.length,
+        shown: log.filter((e) => e.at <= at).length,
+      });
+    }
+
+    if (url.pathname === '/api/diary') {
+      const studentId = url.searchParams.get('student');
+      if (!studentId) return json({ error: 'student required' });
+      const brain = replay(events.read(studentId));
+      const entries = [...brain.nodes.values()]
+        .filter((n) => n.kind === 'diary_entry')
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .map((n) => ({ title: n.title, body: n.body, at: n.createdAt }));
+      return json(entries);
+    }
+
+    return new Response('not found', { status: 404 });
+  },
+});
+
+console.log(`🏫 Alpha Academy dashboard: http://localhost:${server.port}`);
+console.log(`   นักเรียน ${students.list().length} คน`);

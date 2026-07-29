@@ -19,19 +19,43 @@ No trading yet. Suspension disabled — hunger is display-only.
 - [x] Smoke-tested with a real cycle: student "มะลิ" ran a short cycle, browsed, and wrote 13 events into her brain
 - [x] Runtime: **Bun** (`bun test`, `bun src/server/index.ts`) with TypeScript 7 typechecking and latest deps
 
-### M3 — Persistence
-- [ ] SQLite (prototype) with nodes / edges / events tables
-- [ ] Event replay → graph state at any timestamp
-- [ ] Persist student state (energy, enrollment) between processes
+### M3 — Persistence (done)
+- [x] SQLite via `bun:sqlite` (`academy.db`): append-only `events` table as the
+      single source of truth, plus `students` for enrollment and energy
+- [x] Event replay → graph state at any timestamp, unchanged against persisted events
+- [x] Student state (energy, enrollment date) survives between processes;
+      personality always re-derived from the seed, never stored
+- [x] Proven end-to-end: three real cycles on one database — มะลิ opened cycle 2
+      with "สมองมี 9 events", pulled her own question off the queue, researched it,
+      wrote a `lesson` ("ห้ามเชื่อ pattern เดียวตาบอด"), and spawned new questions
+      from what she learned. Brain now ~19 nodes / 17 edges.
+
+Deliberately not materializing `nodes`/`edges` tables yet: replay is fast at this
+scale and the event log is authoritative. Add them when query cost shows up.
 
 ### M4 — Market perception (read-only)
 - [x] Free Binance public REST provider behind `MarketDataProvider` interface
 - [ ] ccxt provider (swap-in) + resilience when the exchange geo-blocks
+      (this sandbox gets HTTP 451; students note the outage and study instead)
 
-### M5 — Dashboard
-- [ ] Classroom view: students, energy state, latest diary snippet
-- [ ] Brain view: live force-graph, node colors by type, confidence sizing
-- [ ] Timeline slider (event-log replay) + diary reader
+### M5 — Dashboard (done)
+- [x] Classroom view: students, energy bar, hunger pill, traits, node/edge counts
+- [x] Brain view: force-directed canvas graph, colour by node kind, radius by
+      confidence, `debunked` nodes dimmed with a red ring, click for full detail,
+      auto-fit so the whole brain stays framed as it grows
+- [x] Timeline slider replaying the event log, plus a play button that animates
+      the brain's growth from day one
+- [x] Diary reader
+- [x] Live: polls every 3s while parked at "now", so growth appears as it happens
+
+`bun run dashboard` → http://localhost:4173 (`--db`, `--port` to override).
+Read-only by design (spec §8) — no route mutates anything.
+
+**Stack note:** built on `Bun.serve` plus one self-contained HTML file instead of
+the Next.js/React stack sketched in spec §11. The job is "read SQLite, draw a
+graph"; Next.js would add a build step and a dependency tree for routing and
+components this page does not have. Zero runtime dependencies, no build step.
+Revisit if the dashboard grows real routing needs.
 
 ## Acceptance (spec §12)
 
