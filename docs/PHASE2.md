@@ -451,3 +451,45 @@ real gap on its first round.
 
 `bun run principal -- --classify=<paths>` dry-runs the zone decision, so the
 maker can ask "what would you be allowed to do here?" before asking for anything.
+
+## H3 — Students can read the library (done)
+
+H1 built the library and gave the **maker** a view of it. It gave the students
+nothing. Spec §9.3 is explicit that this is backwards — *"นักเรียนเดินเข้า
+ห้องสมุดไปเปิดอ่านได้ แต่สิ่งที่อ่านเจอเข้าสมองแบบเดียวกับ 'เพื่อนบอกมา'"* — so a
+shelf only the maker can see is not a library.
+
+Two tools, `library_read` and `library_borrow`:
+
+- **`library_read`** shows the claim, its consensus, how many students verified it
+  and how many disputed it, and the mean alpha. The library is rebuilt on every
+  call, so a claim proven by a classmate an hour ago is on the shelf now.
+- **`library_borrow`** copies one entry into the student's own brain — as a
+  `concept` capped at the hearsay ceiling, with a `heard_from` edge back to a
+  `source` node naming who stood behind it.
+
+Borrowing lands the same way a classmate's word does, and it lands **below** what
+a strategy needs. Three classmates agreeing is still not proof; if the library
+were a shortcut to belief, "ทำการบ้านเอง" would be dead and the whole class would
+converge on whatever the first three students happened to find.
+
+`library_borrow` refuses to copy a student's own verdict back to it — reading
+your own work on a shelf is not learning, and without the refusal a student could
+inflate its own confidence by laundering it through the library.
+
+**Measured.** First live run: มะลิ never opened the library. The tools were
+wired, registered and tested — and nothing told her they existed. This is the
+same failure as P9, twice now: *building the tool is half the work; the prompt
+has to say it is there and what it is for.* The daily review gained a step 3
+naming both tools and, more importantly, naming the payoff — you do not have to
+spend your own energy re-proving what a classmate already proved does not work.
+
+Second run, her brain:
+
+```
+[source]  ห้องสมุดกลาง: insufficient — มั่นใจ 1
+[concept] บนกราฟ 1h: เข้าเมื่อ rsi(14) < 30 · ออกเมื่อ rsi(14) > 70 — มั่นใจ 0.267
+```
+
+Confidence 1 that *the library says this*; 0.267 that it is true — under the
+0.35 ceiling, exactly as designed. She has heard it. She has not proven it.
