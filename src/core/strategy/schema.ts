@@ -9,7 +9,22 @@
 
 import { z } from 'zod';
 
-const indicatorName = z.enum(['price', 'volume', 'rsi', 'sma', 'ema']);
+const indicatorName = z.enum([
+  'price',
+  'volume',
+  'rsi',
+  'sma',
+  'ema',
+  'vol_sma',
+  'hammer',
+  'shooting_star',
+  'doji',
+  'engulfing_bullish',
+  'engulfing_bearish',
+]);
+
+/** Shape patterns take no period — flag it rather than silently ignoring it. */
+const PATTERNS = ['hammer', 'shooting_star', 'doji', 'engulfing_bullish', 'engulfing_bearish'];
 
 const operand = z.union([
   z.object({
@@ -74,6 +89,13 @@ export function reviewSpec(spec: z.infer<typeof strategySpecSchema>, allowedSymb
   for (const [i, c] of spec.entry.entries()) {
     if (c.left.kind === 'number' && c.right.kind === 'number') {
       warnings.push(`entry[${i}]: เทียบตัวเลขกับตัวเลข ผลลัพธ์เหมือนกันทุกแท่ง ไม่ได้ดูตลาดเลย`);
+    }
+    for (const side of [c.left, c.right]) {
+      if (side.kind === 'indicator' && PATTERNS.includes(side.name) && side.period !== undefined) {
+        warnings.push(
+          `entry[${i}]: ${side.name} เป็นรูปทรงแท่งเทียน ไม่ต้องใส่ period — ค่า period ถูกมองข้าม`,
+        );
+      }
     }
   }
   return warnings;
