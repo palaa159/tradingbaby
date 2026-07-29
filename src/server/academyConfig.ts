@@ -35,6 +35,7 @@ export const DEFAULT_ACADEMY: AcademyConfig = {
   schedule: DEFAULT_SCHEDULE,
   models: {
     short: 'claude-haiku-4-5',
-    dailyReview: 'claude-sonnet-4-5',
+    dailyReview: 'claude-sonnet-5',
+    judge: 'claude-opus-5',
   },
 };

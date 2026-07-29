@@ -56,6 +56,8 @@ const roster: Student[] = config.students.map((e) =>
   students.enroll(e.seed, e.name, config.metabolism.startingAllowance, Date.now()),
 );
 
+const startedAs = { flat: 'ถือเงินสด', long: 'ถือขาขึ้น', short: 'เปิดขาลง' } as const;
+
 console.log(`📝 สอบ ${paper.length} ข้อ · นักเรียน ${roster.length} คน · ข้อสอบชุดเดียวกันทั้งชั้น\n`);
 
 for (const student of roster) {
@@ -65,13 +67,13 @@ for (const student of roster) {
 
   for (const question of paper) {
     const answer = await sitExam(student, ctx, question, config.models.short);
-    const result = await gradeAnswer(question, answer, config.models.short);
+    const result = await gradeAnswer(question, answer, config.models.judge);
     graded.push(result);
     citations.push(answer.citedNodeIds);
 
     const mark = result.action === result.bestAction ? '✓' : '✗';
     console.log(
-      `  ${mark} ${student.name} (${question.holding ? 'ถืออยู่' : 'ถือเงินสด'}) ` +
+      `  ${mark} ${student.name} (${startedAs[question.holding]}) ` +
         `ตอบ ${result.action} (ควรเป็น ${result.bestAction}) — ` +
         `รวม ${result.score} = ผล ${result.outcomeScore} · เหตุผล ${result.reasoningScore}`,
     );

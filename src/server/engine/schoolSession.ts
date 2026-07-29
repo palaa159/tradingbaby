@@ -15,6 +15,7 @@ import { replay } from '../../core/eventLog.ts';
 import { hearsayConfidence } from '../../core/school/pairing.ts';
 import { describePersonality } from '../../core/personality.ts';
 import type { Student } from '../../core/types.ts';
+import { effortFor } from './effort.ts';
 import { addEdge, addNode, searchNodes, type GraphOpsContext } from './graphOps.ts';
 
 export interface SessionResult {
@@ -44,7 +45,14 @@ async function ask(prompt: string, system: string, model: string): Promise<{ tex
   let cost: number | undefined;
   const run = query({
     prompt,
-    options: { systemPrompt: system, model, maxTurns: 1, permissionMode: 'default', allowedTools: [] },
+    options: {
+      systemPrompt: system,
+      model,
+      ...effortFor(model),
+      maxTurns: 1,
+      permissionMode: 'default',
+      allowedTools: [],
+    },
   });
   for await (const message of run) {
     if (message.type === 'result') {
