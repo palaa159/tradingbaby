@@ -112,3 +112,69 @@ test('evaluation is deterministic — same input, byte-identical result', () => 
   const b = evaluate(buyLowRsi, input(falling));
   assert.equal(JSON.stringify(a), JSON.stringify(b));
 });
+
+// ---------- direction ----------
+
+test('the same rules point the order the other way when the spec says short', () => {
+  const rules: StrategySpec = {
+    name: 'dip',
+    symbols: ['BTC/USDT'],
+    timeframe: '1h',
+    entry: [{ left: { kind: 'indicator', name: 'price' }, op: '>', right: { kind: 'number', value: 0 } }],
+    exit: [{ left: { kind: 'indicator', name: 'price' }, op: '>', right: { kind: 'number', value: 0 } }],
+    sizePct: 10,
+  };
+  const series = candles([100, 101, 102]);
+  const flat = { symbol: 'BTC/USDT', candles: series, position: null, portfolioValue: 1000 };
+  const held = {
+    symbol: 'BTC/USDT',
+    candles: series,
+    position: { symbol: 'BTC/USDT', quantity: 1, avgPrice: 100 },
+    portfolioValue: 1000,
+  };
+
+  const longOpen = evaluate(rules, flat).orders[0];
+  assert.equal(longOpen?.side, 'buy');
+  assert.equal(longOpen?.intent, 'open');
+  assert.equal(evaluate(rules, held).orders[0]?.side, 'sell');
+  assert.equal(evaluate(rules, held).orders[0]?.intent, 'close');
+
+  const short: StrategySpec = { ...rules, direction: 'short' };
+  const shortOpen = evaluate(short, flat).orders[0];
+  assert.equal(shortOpen?.side, 'sell', 'a short opens by selling');
+  assert.equal(shortOpen?.intent, 'open');
+  assert.equal(evaluate(short, held).orders[0]?.side, 'buy', 'and closes by buying back');
+  assert.equal(evaluate(short, held).orders[0]?.intent, 'close');
+});
+
+test('an omitted direction evaluates identically to an explicit long', () => {
+  const rules: StrategySpec = {
+    name: 'dip',
+    symbols: ['BTC/USDT'],
+    timeframe: '1h',
+    entry: [{ left: { kind: 'indicator', name: 'price' }, op: '>', right: { kind: 'number', value: 0 } }],
+    exit: [],
+    sizePct: 10,
+  };
+  const input = { symbol: 'BTC/USDT', candles: candles([100, 101]), position: null, portfolioValue: 1000 };
+  assert.deepEqual(evaluate(rules, input), evaluate({ ...rules, direction: 'long' }, input));
+});
+
+test('the reason on the order says which way the bet went', () => {
+  const rules: StrategySpec = {
+    name: 'dip',
+    symbols: ['BTC/USDT'],
+    timeframe: '1h',
+    direction: 'short',
+    entry: [{ left: { kind: 'indicator', name: 'price' }, op: '>', right: { kind: 'number', value: 0 } }],
+    exit: [],
+    sizePct: 10,
+  };
+  const order = evaluate(rules, {
+    symbol: 'BTC/USDT',
+    candles: candles([100, 101]),
+    position: null,
+    portfolioValue: 1000,
+  }).orders[0];
+  assert.ok(order?.reason.includes('ฝั่งลง'), 'the trace has to say which side it took');
+});

@@ -17,8 +17,13 @@ export interface Fill {
 
 export interface Holding {
   symbol: string;
+  /** Signed: positive when long, negative when short (spec §6, rule 9). */
   quantity: number;
-  /** Cost basis per unit, fees included. */
+  /**
+   * Break-even price per unit, fees included. For a long this is what you paid;
+   * for a short it is what you received. Either way the position makes money
+   * when the market moves away from it in your favour.
+   */
   avgPrice: number;
 }
 
@@ -33,34 +38,54 @@ export function emptyPortfolio(startingCash: number): PortfolioState {
   return { cash: startingCash, holdings: new Map(), realizedPnl: 0, feesPaid: 0 };
 }
 
-/** Apply one fill. Sells realize P&L against the average cost basis. */
+/**
+ * Apply one fill, either side of the market.
+ *
+ * A fill never flips a position through zero: it closes at most what is open,
+ * and a reversal ships as two orders. That keeps the cost basis unambiguous —
+ * there is no bar on which one number has to mean both the price you paid and
+ * the price you received.
+ */
 export function applyFill(state: PortfolioState, fill: Fill): PortfolioState {
   const holdings = new Map(state.holdings);
   const existing = holdings.get(fill.symbol);
-  let { cash, realizedPnl, feesPaid } = state;
-  feesPaid += fill.fee;
+  const held = existing?.quantity ?? 0;
+  const avg = existing?.avgPrice ?? 0;
 
-  if (fill.side === 'buy') {
-    cash -= fill.quantity * fill.price + fill.fee;
-    const quantity = (existing?.quantity ?? 0) + fill.quantity;
-    const priorCost = (existing?.quantity ?? 0) * (existing?.avgPrice ?? 0);
-    const avgPrice = quantity > 0 ? (priorCost + fill.quantity * fill.price + fill.fee) / quantity : 0;
-    holdings.set(fill.symbol, { symbol: fill.symbol, quantity, avgPrice });
-  } else {
-    const held = existing?.quantity ?? 0;
-    // Spot only (spec §6.1): you cannot sell what you do not hold.
-    const quantity = Math.min(fill.quantity, held);
-    const basis = (existing?.avgPrice ?? 0) * quantity;
-    const proceeds = quantity * fill.price - fill.fee;
-    cash += proceeds;
-    realizedPnl += proceeds - basis;
-    const left = held - quantity;
-    if (left > 1e-12 && existing) {
-      holdings.set(fill.symbol, { ...existing, quantity: left });
-    } else {
-      holdings.delete(fill.symbol);
+  const direction = fill.side === 'buy' ? 1 : -1;
+  const adding = held === 0 || Math.sign(held) === direction;
+  const quantity = adding ? fill.quantity : Math.min(fill.quantity, Math.abs(held));
+
+  // Cash moves against the trade; the fee always costs you, whichever way you went.
+  const gross = quantity * fill.price;
+  const cash = state.cash + (fill.side === 'buy' ? -gross : gross) - fill.fee;
+  const feesPaid = state.feesPaid + fill.fee;
+  let realizedPnl = state.realizedPnl;
+
+  let next: Holding | null = null;
+  if (adding) {
+    // The opening fee rolls into the basis so it is counted once — here, and
+    // not again at exit.
+    const unitCost = quantity > 0 ? (gross + direction * fill.fee) / quantity : fill.price;
+    const total = held + direction * quantity;
+    if (Math.abs(total) > 1e-12) {
+      next = {
+        symbol: fill.symbol,
+        quantity: total,
+        avgPrice: (Math.abs(held) * avg + quantity * unitCost) / Math.abs(total),
+      };
     }
+  } else {
+    // A long earns when the price rises above its basis; a short when it falls
+    // below. The closing fee comes off whichever it was.
+    const perUnit = held > 0 ? fill.price - avg : avg - fill.price;
+    realizedPnl += perUnit * quantity - fill.fee;
+    const left = held + direction * quantity;
+    if (Math.abs(left) > 1e-12 && existing) next = { ...existing, quantity: left };
   }
+
+  if (next) holdings.set(fill.symbol, next);
+  else holdings.delete(fill.symbol);
 
   return { cash, holdings, realizedPnl, feesPaid };
 }
@@ -71,7 +96,11 @@ export function replayFills(startingCash: number, fills: readonly Fill[]): Portf
   return state;
 }
 
-/** Mark-to-market value. Missing prices count a holding at its cost basis. */
+/**
+ * Mark-to-market value. Missing prices count a holding at its cost basis.
+ * A short's quantity is negative, so it subtracts here — which is exactly what
+ * owing the asset means.
+ */
 export function portfolioValue(state: PortfolioState, prices: Record<string, number>): number {
   let value = state.cash;
   for (const holding of state.holdings.values()) {
@@ -81,6 +110,10 @@ export function portfolioValue(state: PortfolioState, prices: Record<string, num
   return value;
 }
 
+/**
+ * Open profit. The signed quantity does the work: for a short, a price below
+ * the basis gives a negative move times a negative size, which is a gain.
+ */
 export function unrealizedPnl(state: PortfolioState, prices: Record<string, number>): number {
   let pnl = 0;
   for (const holding of state.holdings.values()) {

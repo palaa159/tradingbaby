@@ -91,7 +91,8 @@ export function tick(
             cash: state.cash,
             startOfDayValue: input.startOfDayValue,
             currentValue: value,
-            wouldGoShort: order.side === 'sell' && (held?.quantity ?? 0) <= 0,
+            // Only an opening sell bets on a fall; a closing one hands risk back.
+            wouldGoShort: order.intent === 'open' && order.side === 'sell',
           },
           guardrails,
         );
@@ -107,10 +108,12 @@ export function tick(
           continue;
         }
 
+        // Opening sizes against the portfolio; closing sizes against whatever
+        // is open — either side of the market, so the sign is dropped here.
         const quantity =
-          order.side === 'buy'
-            ? ((value * check.sizePct) / 100) / price
-            : (held?.quantity ?? 0) * (check.sizePct / 100);
+          order.intent === 'open'
+            ? (value * check.sizePct) / 100 / price
+            : Math.abs(held?.quantity ?? 0) * (check.sizePct / 100);
         if (quantity <= 0) continue;
 
         const fee = quantity * price * input.feeRate;

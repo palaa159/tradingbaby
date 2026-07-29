@@ -128,3 +128,80 @@ test('judge: a deep drawdown debunks even with positive alpha', () => {
   assert.equal(verdict.status, 'debunked');
   assert.ok(verdict.summary.includes('เสี่ยงเกินรับไหว'));
 });
+
+// ---------- the short side ----------
+
+/** The same rules read the same way; only the side of the bet differs. */
+const rsiDipShort: StrategySpec = { ...rsiDip, name: 'rsi-dip-short', direction: 'short' };
+
+test('a spec with no direction still means long, so old strategies keep their meaning', () => {
+  const candles = bars(sawtooth(4, 20));
+  const implied = backtest(rsiDip, 'BTC/USDT', candles);
+  const explicit = backtest({ ...rsiDip, direction: 'long' }, 'BTC/USDT', candles);
+  assert.equal(implied.returnPct, explicit.returnPct);
+  assert.equal(implied.trades[0]?.direction, 'long');
+});
+
+test('the same rules on the other side make money where the long lost it', () => {
+  const candles = bars(sawtooth(4, 20));
+  const long = backtest(rsiDip, 'BTC/USDT', candles);
+  const short = backtest(rsiDipShort, 'BTC/USDT', candles);
+
+  assert.equal(short.trades.length, long.trades.length, 'the entry rules fire at the same bars');
+  assert.equal(short.trades[0]?.direction, 'short');
+  for (const [i, trade] of short.trades.entries()) {
+    const mirror = long.trades[i];
+    assert.ok(mirror);
+    assert.equal(trade.entryPrice, mirror.entryPrice);
+    assert.ok(Math.sign(trade.pnl) !== Math.sign(mirror.pnl), 'opposite bets cannot both win');
+  }
+});
+
+test('shorting a falling market is profitable, and a rising one is not', () => {
+  const down = bars(Array.from({ length: 120 }, (_, i) => 200 - i));
+  const up = bars(Array.from({ length: 120 }, (_, i) => 100 + i));
+  const alwaysIn: StrategySpec = {
+    name: 'always-short',
+    symbols: ['BTC/USDT'],
+    timeframe: '1h',
+    direction: 'short',
+    entry: [{ left: { kind: 'indicator', name: 'price' }, op: '>', right: { kind: 'number', value: 0 } }],
+    exit: [],
+    sizePct: 100,
+  };
+
+  assert.ok(backtest(alwaysIn, 'BTC/USDT', down).returnPct > 0, 'a short profits as the price falls');
+  assert.ok(backtest(alwaysIn, 'BTC/USDT', up).returnPct < 0, 'and bleeds as it rises');
+});
+
+test('a short beats buy-and-hold in a bear market — which is what alpha is for', () => {
+  const down = bars(Array.from({ length: 120 }, (_, i) => 200 - i));
+  const alwaysShort: StrategySpec = {
+    name: 'always-short',
+    symbols: ['BTC/USDT'],
+    timeframe: '1h',
+    direction: 'short',
+    entry: [{ left: { kind: 'indicator', name: 'price' }, op: '>', right: { kind: 'number', value: 0 } }],
+    exit: [],
+    sizePct: 100,
+  };
+
+  const benchmark = buyAndHold(down);
+  assert.ok(benchmark.returnPct < 0, 'doing nothing loses money here');
+  assert.ok(alphaScore(backtest(alwaysShort, 'BTC/USDT', down), benchmark) > 0);
+});
+
+test('fees are charged on both legs of a short, same as a long', () => {
+  const flat = bars(new Array(80).fill(100));
+  const inAndOut: StrategySpec = {
+    name: 'in-and-out',
+    symbols: ['BTC/USDT'],
+    timeframe: '1h',
+    direction: 'short',
+    entry: [{ left: { kind: 'indicator', name: 'price' }, op: '>', right: { kind: 'number', value: 0 } }],
+    exit: [],
+    sizePct: 100,
+  };
+  const result = backtest(inAndOut, 'BTC/USDT', flat, { feeRate: 0.01 });
+  assert.ok(result.returnPct < 0, 'a flat market plus fees can only lose');
+});

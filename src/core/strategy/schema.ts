@@ -50,6 +50,9 @@ export const strategySpecSchema = z
       .regex(/^[a-z0-9][a-z0-9-]*$/, 'ชื่อสูตรใช้ a-z 0-9 และ - เท่านั้น'),
     symbols: z.array(z.string().min(3)).min(1).max(10),
     timeframe: z.enum(['1h', '4h', '1d']),
+    // Omitted means long, so specs written before the academy allowed shorting
+    // still mean what they were tested to mean (build contract §9.5).
+    direction: z.enum(['long', 'short']).optional(),
     entry: z.array(condition).min(1).max(4),
     exit: z.array(condition).max(4),
     sizePct: z.number().min(1).max(100),
@@ -85,6 +88,11 @@ export function reviewSpec(spec: z.infer<typeof strategySpecSchema>, allowedSymb
   }
   if (spec.exit.length === 0) {
     warnings.push('ไม่มีเงื่อนไขออก — เข้าแล้วจะถือยาวตลอดไป ตั้งใจแบบนั้นจริงหรือ');
+  }
+  if (spec.direction === undefined) {
+    warnings.push(
+      'ไม่ได้ระบุฝั่ง — จะถือว่าเล่นขาขึ้น (long) ถ้าตั้งใจเล่นขาลงต้องใส่ direction: "short"',
+    );
   }
   for (const [i, c] of spec.entry.entries()) {
     if (c.left.kind === 'number' && c.right.kind === 'number') {

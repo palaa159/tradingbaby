@@ -14,6 +14,14 @@ export interface ExamQuestion {
   symbol: string;
   /** Candles up to the decision point — the student sees only this. */
   context: Candle[];
+  /**
+   * Where the student already stands at the decision point.
+   *
+   * Without this the question is unanswerable: "wait" means three different
+   * bets depending on which side you are already on, and grading the word
+   * instead of the position rewards standing still.
+   */
+  holding: Exposure;
   /** What actually happened next. Never shown to the student. */
   outcome: {
     /** Percent change from the decision close to the end of the horizon. */
@@ -26,6 +34,13 @@ export interface ExamQuestion {
 }
 
 export type Action = 'buy' | 'sell' | 'wait';
+
+/**
+ * Where an action leaves the student. The exam scores this rather than the word
+ * the student used to get there, because the same word means different things
+ * from different starting positions.
+ */
+export type Exposure = 'long' | 'flat' | 'short';
 
 export interface ExamAnswer {
   questionId: string;

@@ -8,16 +8,22 @@
  * Size violations are clamped rather than rejected: a strategy asking for 50%
  * when the house allows 20% still trades — at 20 — and the trace says it was
  * clamped, which teaches the student something. Hard violations are refused
- * outright, because there is no smaller version of "shorting" or "kill switch".
+ * outright, because there is no smaller version of "kill switch".
+ *
+ * Both sides of the market are allowed (spec §6, rule 9), and both are governed
+ * by the same limits. What decides whether an order is size-checked is whether
+ * it *opens* risk, not whether it says buy or sell: once shorting exists, a
+ * sell can just as easily be the start of a position as the end of one.
  */
 
 export interface GuardrailConfig {
-  /** Max value of any single position, percent of portfolio. */
+  /** Max value of any single position, percent of portfolio — either side. */
   maxPositionPct: number;
   /** Losing this much of the day's starting value halts trading until tomorrow. */
   maxDailyLossPct: number;
-  /** Spot only. Shorting and leverage stay off in v1 (spec §13). */
+  /** The maker's switch for the short side of the whole school. */
   allowShort: boolean;
+  /** Borrowing stays off: size is still bounded by cash the student really has. */
   allowLeverage: boolean;
   /** Maker halt — stops everything immediately. */
   killSwitch: boolean;
@@ -26,21 +32,21 @@ export interface GuardrailConfig {
 export const DEFAULT_GUARDRAILS: GuardrailConfig = {
   maxPositionPct: 20,
   maxDailyLossPct: 10,
-  allowShort: false,
+  allowShort: true,
   allowLeverage: false,
   killSwitch: false,
 };
 
 export interface GuardrailContext {
   portfolioValue: number;
-  /** Value already held in this symbol. */
+  /** Signed value of the position in this symbol — negative when short. */
   existingPositionValue: number;
   cash: number;
   /** Portfolio value at the start of today, for the daily-loss check. */
   startOfDayValue: number;
   /** Current portfolio value, for the daily-loss check. */
   currentValue: number;
-  /** True when the order would sell more than is held. */
+  /** True when the order would leave a net short position. */
   wouldGoShort: boolean;
 }
 
@@ -59,7 +65,7 @@ export function checkOrder(
   }
 
   if (ctx.wouldGoShort && !config.allowShort) {
-    return { allowed: false, reason: 'ห้ามเก็งราคาลง (spot เท่านั้น) — ขายเกินที่ถืออยู่ไม่ได้' };
+    return { allowed: false, reason: 'คนสร้างปิดฝั่งลงไว้ — ขายเกินที่ถืออยู่ไม่ได้' };
   }
 
   const dailyLossPct =
@@ -73,32 +79,41 @@ export function checkOrder(
     };
   }
 
-  // Selling reduces risk; only buys are size-checked.
-  if (side === 'sell') {
+  // Closing hands risk back and is always allowed; opening or adding to a
+  // position is what the limits exist for. With shorting on, that distinction
+  // no longer lines up with buy-versus-sell.
+  const orderDirection = side === 'buy' ? 1 : -1;
+  const positionDirection = Math.sign(ctx.existingPositionValue);
+  const reducing = positionDirection !== 0 && positionDirection !== orderDirection;
+  if (reducing) {
     return { allowed: true, sizePct: requestedSizePct, clamped: false, note: '' };
   }
 
+  const opening = side === 'buy' ? 'ซื้อ' : 'เปิดฝั่งลง';
   if (ctx.portfolioValue <= 0) {
-    return { allowed: false, reason: 'พอร์ตไม่มีมูลค่าเหลือ — ซื้อไม่ได้' };
+    return { allowed: false, reason: `พอร์ตไม่มีมูลค่าเหลือ — ${opening}ไม่ได้` };
   }
 
-  const heldPct = (ctx.existingPositionValue / ctx.portfolioValue) * 100;
+  // The cap is on size, not on side: a 20% short is as big a bet as a 20% long.
+  const heldPct = (Math.abs(ctx.existingPositionValue) / ctx.portfolioValue) * 100;
   const roomPct = Math.max(0, config.maxPositionPct - heldPct);
   if (roomPct <= 0) {
     return {
       allowed: false,
       reason:
-        `ถือ ${heldPct.toFixed(1)}% ของพอร์ตในเหรียญนี้แล้ว เต็มเพดาน ` +
-        `${config.maxPositionPct}% — ซื้อเพิ่มไม่ได้`,
+        `เปิดไม้ในเหรียญนี้ไว้ ${heldPct.toFixed(1)}% ของพอร์ตแล้ว เต็มเพดาน ` +
+        `${config.maxPositionPct}% — เพิ่มอีกไม่ได้`,
     };
   }
 
+  // Cash backs both sides. A short receives cash on open but still owes the
+  // asset, so letting it size against money it does not have is leverage with
+  // the label filed off.
   const cashPct = (ctx.cash / ctx.portfolioValue) * 100;
   if (cashPct <= 0 && !config.allowLeverage) {
     return { allowed: false, reason: 'เงินสดหมด และห้ามยืมเงินเทรด' };
   }
 
-  // Never spend more cash than exists — that would be leverage by accident.
   const affordablePct = config.allowLeverage ? roomPct : Math.min(roomPct, cashPct);
   const sizePct = Math.min(requestedSizePct, affordablePct);
   const clamped = sizePct < requestedSizePct;

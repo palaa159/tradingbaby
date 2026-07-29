@@ -16,6 +16,7 @@ import {
   volumeSma,
   type Series,
 } from './indicators.ts';
+import { directionOf } from './types.ts';
 import type {
   Candle,
   Condition,
@@ -23,6 +24,7 @@ import type {
   EvaluationResult,
   Operand,
   Order,
+  OrderSide,
   StrategySpec,
 } from './types.ts';
 
@@ -127,15 +129,23 @@ export function evaluate(spec: StrategySpec, input: EvaluationInput): Evaluation
     return { orders, readings };
   }
 
+  // The rules never change with the side; only which way the order points does.
+  // A short bets the same conditions in the opposite direction.
+  const short = directionOf(spec) === 'short';
+  const openSide: OrderSide = short ? 'sell' : 'buy';
+  const closeSide: OrderSide = short ? 'buy' : 'sell';
+  const label = short ? 'ฝั่งลง' : 'ฝั่งขึ้น';
+
   if (input.position) {
     // Exit conditions are ORed: any one of them closes the position.
     const fired = spec.exit.filter((c) => holds(c, input.candles, readings));
     if (fired.length > 0) {
       orders.push({
         symbol: input.symbol,
-        side: 'sell',
+        side: closeSide,
+        intent: 'close',
         sizePct: 100,
-        reason: `ออกเพราะ ${describe(fired)}`,
+        reason: `ปิด${label}เพราะ ${describe(fired)}`,
       });
     }
     return { orders, readings };
@@ -146,9 +156,10 @@ export function evaluate(spec: StrategySpec, input: EvaluationInput): Evaluation
   if (spec.entry.length > 0 && results.every(Boolean)) {
     orders.push({
       symbol: input.symbol,
-      side: 'buy',
+      side: openSide,
+      intent: 'open',
       sizePct: spec.sizePct,
-      reason: `เข้าเพราะ ${describe(spec.entry)}`,
+      reason: `เปิด${label}เพราะ ${describe(spec.entry)}`,
     });
   }
   return { orders, readings };

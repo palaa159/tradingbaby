@@ -44,7 +44,11 @@ const paper: ExamQuestion[] = [];
 for (let n = 0; n < wanted; n++) {
   // Spread decision points evenly through the usable middle of the series.
   const index = Math.floor(80 + ((candles.length - 160) * (n + 1)) / (wanted + 1));
-  const question = cutQuestion(config.universe[0] ?? 'BTC/USDT', candles, index, Date.now());
+  // Rotate the starting position, so the paper asks "should I get in?", "should
+  // I stay in?" and "should I cover?" in turn. A paper cut from one position
+  // lets a student score well by never doing anything.
+  const holding = (['flat', 'long', 'short'] as const)[n % 3] ?? 'flat';
+  const question = cutQuestion(config.universe[0] ?? 'BTC/USDT', candles, index, Date.now(), { holding });
   if (question) paper.push(question);
 }
 
@@ -67,7 +71,8 @@ for (const student of roster) {
 
     const mark = result.action === result.bestAction ? '✓' : '✗';
     console.log(
-      `  ${mark} ${student.name} ตอบ ${result.action} (ควรเป็น ${result.bestAction}) — ` +
+      `  ${mark} ${student.name} (${question.holding ? 'ถืออยู่' : 'ถือเงินสด'}) ` +
+        `ตอบ ${result.action} (ควรเป็น ${result.bestAction}) — ` +
         `รวม ${result.score} = ผล ${result.outcomeScore} · เหตุผล ${result.reasoningScore}`,
     );
     if (result.comment) console.log(`     กรรมการ: ${result.comment}`);

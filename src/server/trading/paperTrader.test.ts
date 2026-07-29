@@ -88,7 +88,7 @@ test('every fill traces back to its strategy version and hypotheses', () => {
   assert.equal(trace?.strategy?.id, strategy.id);
   assert.equal(trace?.strategy?.version, 1);
   assert.deepEqual(trace?.hypothesisIds, ['hypo-7']);
-  assert.ok(trace?.fill.reason.includes('เข้าเพราะ'), 'the rule that fired is on the fill');
+  assert.ok(trace?.fill.reason.includes('เปิดฝั่งขึ้นเพราะ'), 'the rule that fired is on the fill');
 });
 
 test('a later strategy version does not rewrite an old trade', () => {

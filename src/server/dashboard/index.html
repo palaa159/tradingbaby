@@ -194,8 +194,10 @@ async function loadTrades() {
       <td>${esc(b.symbol)}</td><td class="note">${esc(b.reason)}</td></tr>`).join('')}</table>` : '';
 
   const strategies = data.strategies.length ? `<table>
-    <tr><th>สูตร</th><th>เวอร์ชัน</th><th>สถานะ</th><th>ไม้</th><th>จากข้อสงสัย</th></tr>
-    ${data.strategies.map(s => `<tr><td>${esc(s.spec.name)}</td><td>v${s.version}</td>
+    <tr><th>สูตร</th><th>ฝั่ง</th><th>กราฟ</th><th>เวอร์ชัน</th><th>สถานะ</th><th>ไม้</th><th>จากข้อสงสัย</th></tr>
+    ${data.strategies.map(s => `<tr><td>${esc(s.spec.name)}</td>
+      <td>${s.spec.direction === 'short' ? '▼ ขาลง' : '▲ ขาขึ้น'}</td>
+      <td>${esc(s.spec.timeframe)}</td><td>v${s.version}</td>
       <td>${s.status === 'active' ? 'ใช้งาน' : 'ปลดแล้ว'}</td><td>${s.spec.sizePct}%</td>
       <td class="why">${s.fromHypothesisIds.map(esc).join(', ') || '—'}</td></tr>`).join('')}</table>`
     : '<div class="empty">ยังไม่มีสูตร</div>';
