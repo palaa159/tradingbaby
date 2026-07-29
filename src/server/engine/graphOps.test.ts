@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test } from 'bun:test';
 
 import { MemoryEventStore } from '../../core/eventLog.ts';
 import { addNode, curiosityQueue, searchNodes, updateNode, type GraphOpsContext } from './graphOps.ts';

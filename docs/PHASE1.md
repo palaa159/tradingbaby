@@ -17,6 +17,7 @@ No trading yet. Suspension disabled — hunger is display-only.
 - [x] Curiosity queue + activity cycles (short cycle / daily review), blank-slate system prompt
 - [x] Scheduler (`AcademyBell`): deterministic day plan, per-student caps, quota backoff, skipped-cycle log
 - [x] Smoke-tested with a real cycle: student "มะลิ" ran a short cycle, browsed, and wrote 13 events into her brain
+- [x] Runtime: **Bun** (`bun test`, `bun src/server/index.ts`) with TypeScript 7 typechecking and latest deps
 
 ### M3 — Persistence
 - [ ] SQLite (prototype) with nodes / edges / events tables

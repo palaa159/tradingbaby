@@ -21,6 +21,18 @@ docs/
 REQUIREMENTS.md  the living spec (v1.3)
 ```
 
+## Quickstart
+
+```sh
+bun install
+bun run typecheck        # TypeScript 7, strict
+bun test                 # unit tests
+bun run cycle -- --student=มะลิ --kind=short   # run one real learning cycle
+```
+
+Runtime is **Bun**; agent auth comes from the maker's Claude subscription login
+(the Agent SDK handles it — no API keys).
+
 ## Principles baked into the code
 
 1. Students start blank — no trading knowledge is ever seeded.
