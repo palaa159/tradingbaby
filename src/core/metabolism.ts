@@ -24,8 +24,10 @@ export interface MetabolismConfig {
     hungry: number; // below this fraction → hungry
     starving: number; // below this fraction → starving
   };
-  /** Phase 1: false. Phase 2+: true (spec §12). */
+  /** Off in Phase 1 (nothing to earn yet); on from Phase 2 (spec §12). */
   suspensionEnabled: boolean;
+  /** Energy per unit of realized P&L. */
+  pnlToEnergyRate: number;
   /** Expulsion (คัดออก) — off by default (spec §14.5). */
   expulsionEnabled: boolean;
 }
@@ -47,8 +49,12 @@ export const DEFAULT_METABOLISM: MetabolismConfig = {
     hungry: 0.5,
     starving: 0.15,
   },
-  suspensionEnabled: false,
+  // Trading exists from Phase 2, so students can feed themselves and
+  // suspension becomes fair. Expulsion stays off by default (spec §14.5).
+  suspensionEnabled: true,
   expulsionEnabled: false,
+  // One unit of realized profit buys one cycle's worth of thinking.
+  pnlToEnergyRate: 1,
 };
 
 export function hungerState(energy: number, config: MetabolismConfig): HungerState {
@@ -80,3 +86,53 @@ export function feed(energy: number, realizedPnl: number, pnlToEnergyRate: numbe
  * a minimum daily cycle; active strategies keep running at zero AI cost.
  */
 export const MIN_DAILY_CYCLES = 1;
+
+/**
+ * How many cycles a student may run today. Hunger buys fewer thoughts, but the
+ * floor never drops to zero — a student with good strategies must be able to
+ * eat its way back rather than spiral (spec §3.4).
+ */
+export function cycleBudget(hunger: HungerState, fullBudget: number): number {
+  switch (hunger) {
+    case 'well_fed':
+      return fullBudget;
+    case 'hungry':
+      return Math.max(MIN_DAILY_CYCLES, Math.floor(fullBudget / 2));
+    case 'starving':
+      return MIN_DAILY_CYCLES;
+    case 'suspended':
+      return 0;
+  }
+}
+
+export interface Settlement {
+  energy: number;
+  /** Realized P&L now accounted for; store it so the same profit is not eaten twice. */
+  settledPnl: number;
+  fed: number;
+  suspended: boolean;
+}
+
+/**
+ * Convert newly realized P&L into energy.
+ *
+ * Only the delta since the last settlement counts, so calling this repeatedly is
+ * safe — a student cannot farm energy by having its books read twice.
+ */
+export function settle(
+  energy: number,
+  previouslySettledPnl: number,
+  realizedPnlNow: number,
+  config: MetabolismConfig,
+  pnlToEnergyRate: number,
+): Settlement {
+  const delta = realizedPnlNow - previouslySettledPnl;
+  const fed = delta * pnlToEnergyRate;
+  const next = Math.max(0, energy + fed);
+  return {
+    energy: next,
+    settledPnl: realizedPnlNow,
+    fed,
+    suspended: next <= 0 && config.suspensionEnabled,
+  };
+}
