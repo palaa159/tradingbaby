@@ -16,14 +16,52 @@ export interface Shell {
   out: string;
 }
 
-/** Run a command in the repo, capturing both streams. Never throws. */
+/**
+ * How long any one git command may take before it is killed.
+ *
+ * A round hung here for good: `git push` succeeded, the child exited, and the
+ * await on it never resolved — a zombie git and a Designer idle in the event
+ * loop, holding the work lock, with HEAD parked on its own branch. Nothing
+ * downstream could run, and no round row was ever written, so the log said the
+ * round was still going. A command that has not finished in two minutes is not
+ * going to.
+ */
+const COMMAND_TIMEOUT_MS = 120_000;
+
+/**
+ * Run a command in the repo, capturing both streams. Never throws, and never
+ * waits forever: on timeout the child is killed and the result is a failure the
+ * caller handles like any other, which for both agents means reverting the round.
+ */
 export async function sh(cmd: string[]): Promise<Shell> {
-  const proc = Bun.spawn(cmd, { cwd: process.cwd(), stdout: 'pipe', stderr: 'pipe' });
-  const [out, err] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-  return { ok: (await proc.exited) === 0, out: (out + err).slice(-4000) };
+  // No stdin. If git or ssh ever decides to ask a question, it gets EOF rather
+  // than an unattended agent waiting for an answer nobody will type.
+  const proc = Bun.spawn(cmd, {
+    cwd: process.cwd(),
+    stdin: 'ignore',
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    proc.kill('SIGKILL');
+  }, COMMAND_TIMEOUT_MS);
+
+  try {
+    const [out, err] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ]);
+    const code = await proc.exited;
+    if (timedOut) {
+      return { ok: false, out: `${cmd.join(' ')}: เกิน ${COMMAND_TIMEOUT_MS / 1000} วินาที — ฆ่าทิ้ง` };
+    }
+    return { ok: code === 0, out: (out + err).slice(-4000) };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
