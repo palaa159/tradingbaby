@@ -12,6 +12,13 @@
  * instead of having to be at a terminal when a round happens. It still writes
  * no code — auto-merge stays off until the maker turns it on (spec §9.4).
  *
+ * `alpha-designer` looks at the real screen every three hours and fixes what it
+ * can inside the green zone. It had never been scheduled at all: it ran once, by
+ * hand, crashed, and nothing brought it back — which is most of the reason the
+ * screen stopped improving. It leaves its work uncommitted on purpose, and skips
+ * any round that starts on a dirty tree, so it does at most one round's worth of
+ * change before the maker looks.
+ *
  * `alpha-trader` runs the adopted strategies on the candle clock. It is a
  * separate process on purpose: thinking is rationed by the subscription quota,
  * trading costs no AI at all, so a student out of energy keeps earning.
@@ -49,6 +56,18 @@ module.exports = {
       restart_delay: 10000,
       out_file: '/var/log/alpha-principal.log',
       error_file: '/var/log/alpha-principal.log',
+    },
+    {
+      name: 'alpha-designer',
+      cwd: '/root/tradingbaby',
+      script: '/usr/local/bin/bun',
+      interpreter: 'none',
+      args: ['src/server/designer.ts', '--db=/root/tradingbaby/academy.db', '--watch=180'],
+      env: { TZ: 'Asia/Bangkok' },
+      autorestart: true,
+      restart_delay: 60000,
+      out_file: '/var/log/alpha-designer.log',
+      error_file: '/var/log/alpha-designer.log',
     },
     {
       name: 'alpha-trader',

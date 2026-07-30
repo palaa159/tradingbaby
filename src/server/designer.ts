@@ -27,6 +27,7 @@
 import { classifyChange } from '../core/principal/zones.ts';
 import { DEFAULT_ACADEMY } from './academyConfig.ts';
 import { hardFlags, runAudit, type PageAudit } from './design/audit.ts';
+import { changedPaths } from './design/changed.ts';
 import { DesignLog, type DesignOutcome } from './db/designLog.ts';
 import { SdkLog } from './db/sdkLog.ts';
 import { openAcademyDb } from './db/sqliteStore.ts';
@@ -181,11 +182,7 @@ async function round(): Promise<void> {
       .slice(0, 30);
 
     const post = await sh(['git', 'status', '--porcelain']);
-    changed = post.out
-      .trim()
-      .split('\n')
-      .map((l) => l.slice(3).trim())
-      .filter(Boolean);
+    changed = changedPaths(post.out);
 
     if (changed.length === 0) {
       outcome = 'clean';
