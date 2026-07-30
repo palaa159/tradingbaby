@@ -23,6 +23,12 @@ const WORK: Record<string, [string, string, string]> = {
   failed: ['🚨', 'text-[var(--bad)]', 'รอบล้ม'],
 };
 
+const ROUND_LABEL: Record<string, string> = {
+  ok: 'ปกติ',
+  warn: 'เตือน',
+  broken: 'พัง',
+};
+
 export default function Page() {
   const data = usePoll<PrincipalData>('/api/principal');
   if (!data) return <div className="p-4 text-sm text-muted-foreground">กำลังโหลด…</div>;
@@ -35,8 +41,30 @@ export default function Page() {
     );
   }
 
+  const latest = data.rounds[0];
+  if (!latest) return null;
+  const [latestBadge, latestColor] = BADGE[latest.overall] ?? ['•', 'text-muted-foreground'];
+  const counts = data.rounds.reduce<Record<string, number>>((acc, r) => {
+    acc[r.overall] = (acc[r.overall] ?? 0) + 1;
+    return acc;
+  }, {});
+
   return (
     <div className="flex h-full flex-col gap-3 overflow-y-auto p-3 md:p-5">
+      <Card className="gap-0 border-l-2 border-l-current py-3">
+        <CardHeader className="px-3 pb-2">
+          <CardTitle className={`flex flex-wrap items-baseline gap-2 text-sm ${latestColor}`}>
+            <span>
+              {latestBadge} ตอนนี้ {ROUND_LABEL[latest.overall] ?? latest.overall}
+            </span>
+            <time className="text-[11px] font-normal text-muted-foreground">{fmt(latest.at)}</time>
+          </CardTitle>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            จาก {data.rounds.length} รอบตรวจ · ปกติ {counts.ok ?? 0} · เตือน {counts.warn ?? 0} · พัง{' '}
+            {counts.broken ?? 0}
+          </p>
+        </CardHeader>
+      </Card>
       {data.works.map((w) => {
         const [icon, color, label] = WORK[w.outcome] ?? ['•', 'text-muted-foreground', w.outcome];
         return (
@@ -80,7 +108,7 @@ export default function Page() {
             <CardHeader className="px-3 pb-2">
               <CardTitle className={`flex flex-wrap items-baseline gap-2 text-sm ${color}`}>
                 <span>
-                  {badge} {r.overall}
+                  {badge} {ROUND_LABEL[r.overall] ?? r.overall}
                 </span>
                 <time className="text-[11px] font-normal text-muted-foreground">{fmt(r.at)}</time>
               </CardTitle>
