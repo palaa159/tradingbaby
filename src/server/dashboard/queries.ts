@@ -27,6 +27,7 @@ import {
   strategies,
   students,
   trading,
+  workLog,
 } from './context.ts';
 
 function timeBounds(log: readonly GraphEvent[]): { first: number; last: number } {
@@ -174,8 +175,13 @@ export function schedule(at: number) {
   return { day, now: at, nowMinute, schedule: active, slots, history: ledger.dayCounts(14) };
 }
 
+/**
+ * The Principal's page: the health walks, and what it did about the requests.
+ * The walks are what it saw; the works are what it acted on — a page with only
+ * the first reads like a caretaker who never lifts anything.
+ */
 export function principalRounds() {
-  return { rounds: principalLog.recent(30) };
+  return { rounds: principalLog.recent(30), works: workLog.recent(30) };
 }
 
 /**

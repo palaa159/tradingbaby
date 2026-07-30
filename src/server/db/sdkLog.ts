@@ -21,7 +21,12 @@ export type SdkCaller =
   | 'exam:sit'
   | 'exam:grade'
   | 'school:share'
-  | 'school:listen';
+  | 'school:listen'
+  /** The Principal working one request from the box (spec §9.4). */
+  | 'principal:request'
+  /** The Maker Designer's round. It used to log itself as a daily review, which
+   *  put its spend on the students' bill. */
+  | 'design:round';
 
 export interface SdkCallInput {
   caller: SdkCaller;

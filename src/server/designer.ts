@@ -158,7 +158,7 @@ async function round(): Promise<void> {
 
     let text = '';
     for await (const message of tracedQuery({
-      caller: 'cycle:daily_review',
+      caller: 'design:round',
       studentId: undefined,
       log: sdkLog,
       prompt,

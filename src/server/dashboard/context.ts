@@ -17,6 +17,7 @@ import { SdkLog } from '../db/sdkLog.ts';
 import { SettingsStore } from '../db/settingsStore.ts';
 import { StrategyStore } from '../db/strategyStore.ts';
 import { TradingStore } from '../db/tradingStore.ts';
+import { WorkLog } from '../db/workLog.ts';
 
 const db = openAcademyDb(process.env.ACADEMY_DB ?? 'academy.db');
 
@@ -32,3 +33,4 @@ export const roster = new Roster(db);
 export const settings = new SettingsStore(db);
 export const exams = new ExamStore(db);
 export const designLog = new DesignLog(db);
+export const workLog = new WorkLog(db);

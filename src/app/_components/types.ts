@@ -108,6 +108,20 @@ export interface PrincipalData {
     replayMismatches: number;
     autoMergeGreen: boolean;
   }[];
+  /** What the Principal did about the request box, newest first (spec §9.4). */
+  works: {
+    id: number;
+    at: number;
+    requestId: string;
+    studentName: string;
+    requestTitle: string;
+    outcome: string;
+    zone: string;
+    changed: string[];
+    checks: { name: string; ok: boolean }[];
+    note: string;
+    durationMs: number;
+  }[];
 }
 
 export const KIND: Record<string, { color: string; label: string }> = {

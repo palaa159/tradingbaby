@@ -16,6 +16,13 @@ const MARK: Record<string, [string, string]> = {
   broken: ['✗', 'text-[var(--bad)]'],
 };
 
+const WORK: Record<string, [string, string, string]> = {
+  written: ['✍️', 'text-[var(--ok)]', 'เขียนโค้ดแล้ว รอคนสร้างตรวจ'],
+  handed_over: ['📋', 'text-[var(--warn)]', 'ส่งต่อคนสร้าง'],
+  reverted: ['↩️', 'text-[var(--bad)]', 'ย้อนกลับทั้งรอบ'],
+  failed: ['🚨', 'text-[var(--bad)]', 'รอบล้ม'],
+};
+
 export default function Page() {
   const data = usePoll<PrincipalData>('/api/principal');
   if (!data) return <div className="p-4 text-sm text-muted-foreground">กำลังโหลด…</div>;
@@ -30,6 +37,39 @@ export default function Page() {
 
   return (
     <div className="flex h-full flex-col gap-3 overflow-y-auto p-3 md:p-5">
+      {data.works.map((w) => {
+        const [icon, color, label] = WORK[w.outcome] ?? ['•', 'text-muted-foreground', w.outcome];
+        return (
+          <Card key={`work-${w.id}`} className="gap-0 border-l-2 border-l-current py-3">
+            <CardHeader className="px-3 pb-2">
+              <CardTitle className={`flex flex-wrap items-baseline gap-2 text-sm ${color}`}>
+                <span>
+                  {icon} {label}
+                </span>
+                <time className="text-[11px] font-normal text-muted-foreground">{fmt(w.at)}</time>
+              </CardTitle>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                คำร้องของ{w.studentName}: {w.requestTitle}
+              </p>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-1 px-3 text-sm">
+              <p className="whitespace-pre-wrap">{w.note}</p>
+              {w.changed.length ? (
+                <p className="text-[11px] text-muted-foreground">
+                  แก้ {w.changed.length} ไฟล์: {w.changed.join(', ')}
+                </p>
+              ) : null}
+              {w.checks.length ? (
+                <p className="text-[11px] text-muted-foreground">
+                  {w.checks
+                    .map((c) => `${c.ok ? '✓' : '✗'} ${c.name}`)
+                    .join(' · ')}
+                </p>
+              ) : null}
+            </CardContent>
+          </Card>
+        );
+      })}
       {data.rounds.map((r) => {
         const [badge, color] = BADGE[r.overall] ?? ['•', 'text-muted-foreground'];
         return (

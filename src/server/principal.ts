@@ -15,11 +15,17 @@
 
 import { replay } from '../core/eventLog.ts';
 import { runHealthChecks, worstSeverity, type SchoolVitals } from '../core/principal/health.ts';
+import { nextRequest, type OpenRequest } from '../core/principal/requests.ts';
 import { classifyChange, decideAction, DEFAULT_POLICY } from '../core/principal/zones.ts';
 import { DEFAULT_ACADEMY } from './academyConfig.ts';
+import { changedPaths } from './design/changed.ts';
 import { PrincipalLog } from './db/principalLog.ts';
+import { SdkLog } from './db/sdkLog.ts';
 import { openAcademyDb, SqliteEventStore, StudentStore } from './db/sqliteStore.ts';
 import { StrategyStore } from './db/strategyStore.ts';
+import { WorkLog, type WorkOutcome } from './db/workLog.ts';
+import { tracedQuery } from './engine/sdkTrace.ts';
+import { DEFAULT_LOCK_PATH, takeWorkLock } from './workLock.ts';
 
 function arg(name: string): string | undefined {
   const prefix = `--${name}=`;
@@ -46,11 +52,28 @@ const store = new SqliteEventStore(db);
 const students = new StudentStore(db);
 const strategies = new StrategyStore(db);
 const log = new PrincipalLog(db);
+const workLog = new WorkLog(db);
+const sdkLog = new SdkLog(db);
 
 const watchMinutes = Number(arg('watch') ?? 0);
 
-/** One walk of the school. Returns the worst thing it saw. */
-function round(): 'ok' | 'warn' | 'broken' {
+const sh = async (cmd: string[]): Promise<{ ok: boolean; out: string }> => {
+  const proc = Bun.spawn(cmd, { cwd: process.cwd(), stdout: 'pipe', stderr: 'pipe' });
+  const [out, err] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  return { ok: (await proc.exited) === 0, out: (out + err).slice(-4000) };
+};
+
+/** Put the tree back exactly as it was found. */
+async function revert(): Promise<void> {
+  await sh(['git', 'checkout', '--', '.']);
+  await sh(['git', 'clean', '-fd', 'src']);
+}
+
+/** One walk of the school. Returns the worst thing it saw, and the request box. */
+function round(): { overall: 'ok' | 'warn' | 'broken'; open: OpenRequest[] } {
   const suspendedIds = new Set(
     db
       .query<{ id: string }, []>('SELECT id FROM students WHERE suspended_at IS NOT NULL')
@@ -59,16 +82,24 @@ function round(): 'ok' | 'warn' | 'broken' {
   );
 
   const roster = students.list();
-  let openRequests = 0;
+  const open: OpenRequest[] = [];
   let activeStrategies = 0;
   const replayMismatches: { strategyId: string; mismatches: number }[] = [];
 
   const vitalsStudents: SchoolVitals['students'] = roster.map((student) => {
     const eventLog = store.read(student.id);
     const brain = replay(eventLog);
-    openRequests += [...brain.nodes.values()].filter(
-      (n) => n.kind === 'feature_request' && n.status !== 'answered',
-    ).length;
+    for (const node of brain.nodes.values()) {
+      if (node.kind !== 'feature_request' || node.status === 'answered') continue;
+      open.push({
+        id: node.id,
+        studentId: student.id,
+        studentName: student.name,
+        title: node.title,
+        body: node.body,
+        at: node.createdAt,
+      });
+    }
 
     const own = strategies.all(student.id);
     activeStrategies += own.filter((s) => s.status === 'active').length;
@@ -90,6 +121,7 @@ function round(): 'ok' | 'warn' | 'broken' {
   });
 
   const at = Date.now();
+  const openRequests = open.length;
   const vitals: SchoolVitals = {
     students: vitalsStudents,
     replayMismatches,
@@ -130,7 +162,154 @@ function round(): 'ok' | 'warn' | 'broken' {
       '(spec ข้อ 9.4 — เริ่มด้วยขออนุมัติก่อนเสมอ)',
   );
 
-  return overall;
+  return { overall, open };
+}
+
+const SYSTEM = `เธอคือ "ครูใหญ่" ของ Alpha Academy — คนที่ดูแลสภาพแวดล้อมให้นักเรียนเรียนได้ไม่สะดุด
+เธอไม่ใช่นักเรียน ไม่เทรด ไม่แก้ความรู้ในสมองใคร งานเดียวของรอบนี้คือคำร้องหนึ่งใบ
+
+นักเรียนเขียนคำร้องเมื่อเครื่องมือพังหรืออยากได้ของใหม่ อ่านให้เข้าใจว่า**เขาติดอะไรจริงๆ**
+แล้วตัดสินสามทาง:
+
+1. ทำได้และอยู่ในโซนเขียว → ลงมือแก้โค้ดเลย (Edit/Write) แก้ให้น้อยที่สุดที่แก้ปัญหาจริง
+   มีเทสต์ครอบด้วยถ้าเป็นตรรกะใหม่
+2. ทำได้แต่ต้องแตะนอกโซนเขียว → **อย่าแก้** เขียนอธิบายว่าต้องแก้อะไรตรงไหน ให้คนสร้างตัดสิน
+3. ไม่ควรทำ (เกินขอบเขต ไม่คุ้ม หรือนักเรียนเข้าใจผิด) → อธิบายว่าทำไม
+
+โซนเขียวที่แก้ได้: src/app/, src/components/ui/, src/server/engine/tools.ts,
+src/server/engine/prompts.ts, src/server/marketData.ts, ไฟล์ *.test.ts, docs/
+ทุกอย่างนอกนี้ห้ามแตะ โดยเฉพาะ src/core/principal/ (ขอบเขตอำนาจของเธอเอง)
+และ src/core/trading/guardrails.ts กับ src/core/strategy/evaluate.ts (สัญญาที่โรงเรียนให้ไว้)
+
+สัญญาการสร้างข้อ 9.5: **เพิ่ม ไม่ทับ** — เครื่องมือเดิมที่นักเรียนใช้อยู่ต้องทำงานเหมือนเดิมทุกอย่าง
+ห้ามเปลี่ยนความหมายของของเก่าเพื่อให้ของใหม่สวย
+
+ปิดท้ายด้วยสรุปสั้นๆ บรรทัดแรกขึ้นต้นด้วย DECISION: fixed | needs_maker | declined
+บรรทัดถัดไปขึ้นต้นด้วย NOTE: ตามด้วยคำอธิบายที่คนสร้างและนักเรียนอ่านรู้เรื่อง`;
+
+/**
+ * One request, worked (spec §9.4 step 1–5).
+ *
+ * The guardrails are the Designer's, for the same reason: this edits the repo
+ * with nobody watching. Zone policy decides what may be kept, the three checks
+ * decide whether it works, and anything that fails either goes back in full.
+ *
+ * It does not commit and it does not merge. Auto-merge is off (spec §9.4 lets
+ * the maker choose, and the school starts with approval-first), so the honest
+ * end state is written code, green checks, and a row the maker can read.
+ */
+async function work(open: OpenRequest[]): Promise<void> {
+  const request = nextRequest(open, workLog.attemptedRequestIds());
+  if (!request) return;
+
+  const taken = takeWorkLock(DEFAULT_LOCK_PATH, 'principal');
+  if ('heldBy' in taken) {
+    console.log(`⏸️  มีคำร้องรอ แต่ ${taken.heldBy} กำลังแก้โค้ดอยู่ — รอรอบหน้า`);
+    return;
+  }
+
+  const started = Date.now();
+  let outcome: WorkOutcome = 'failed';
+  let zone = '';
+  let changed: string[] = [];
+  const checks: { name: string; ok: boolean }[] = [];
+  let note = '';
+
+  try {
+    const dirty = await sh(['git', 'status', '--porcelain']);
+    if (dirty.out.trim()) {
+      console.log('⏸️  working tree ไม่สะอาด — ครูใหญ่ไม่แตะโค้ดรอบนี้');
+      return;
+    }
+
+    console.log(`🛠️  ครูใหญ่รับคำร้องของ${request.studentName}: ${request.title}`);
+
+    let text = '';
+    for await (const message of tracedQuery({
+      caller: 'principal:request',
+      studentId: request.studentId,
+      log: sdkLog,
+      prompt: [
+        `คำร้องจาก${request.studentName} (${request.studentId})`,
+        `หัวข้อ: ${request.title}`,
+        '',
+        request.body || '(ไม่มีรายละเอียดเพิ่ม)',
+      ].join('\n'),
+      options: {
+        systemPrompt: SYSTEM,
+        model: config.models.dailyReview,
+        maxTurns: 50,
+        permissionMode: 'default',
+        allowedTools: ['Read', 'Edit', 'Write', 'Glob', 'Grep'],
+      },
+    })) {
+      const m = message as { type: string; subtype?: string; result?: string };
+      if (m.type === 'result' && m.subtype === 'success') text = m.result ?? '';
+    }
+
+    const decision = /^DECISION:\s*(\w+)/im.exec(text)?.[1]?.toLowerCase() ?? '';
+    note = /^NOTE:\s*([\s\S]*)/im.exec(text)?.[1]?.trim().slice(0, 2000) ?? text.slice(0, 2000);
+    if (decision) note = `[${decision}] ${note}`;
+
+    changed = changedPaths((await sh(['git', 'status', '--porcelain'])).out);
+
+    if (changed.length === 0) {
+      // Nothing written is a real answer: it needs the maker, or it should not
+      // be built at all. Either way this row is the report, and the request
+      // stays open — closing it would hide the maker's to-do.
+      outcome = 'handed_over';
+      console.log(`📋 ไม่ได้แก้โค้ด — ${note.split('\n')[0] ?? ''}`);
+      return;
+    }
+
+    const verdict = classifyChange(changed);
+    zone = verdict.zone;
+    if (verdict.zone !== 'green') {
+      await revert();
+      outcome = 'reverted';
+      note = `แตะนอกโซนเขียว — ${verdict.reason}\n\n${note}`;
+      console.log(`↩️  ${note.split('\n')[0] ?? ''}`);
+      return;
+    }
+
+    for (const [name, cmd] of [
+      ['typecheck', ['bun', 'run', 'typecheck']],
+      ['test', ['bun', 'test']],
+      ['build', ['bun', 'run', 'build']],
+    ] as const) {
+      const res = await sh([...cmd]);
+      checks.push({ name, ok: res.ok });
+      if (!res.ok) {
+        await revert();
+        outcome = 'reverted';
+        note = `${name} พัง — ย้อนกลับทั้งรอบ\n${res.out.slice(-800)}\n\n${note}`;
+        console.log(`↩️  ${name} พัง — ย้อนกลับทั้งรอบ`);
+        return;
+      }
+    }
+
+    outcome = 'written';
+    console.log(`✍️  เขียนแล้ว ${changed.length} ไฟล์ ผ่านครบสามด่าน — รอคนสร้างตรวจ`);
+    console.log(`    ${changed.join(', ')}`);
+  } catch (error) {
+    note = error instanceof Error ? error.message : String(error);
+    console.error(`งานของครูใหญ่ล้ม: ${note}`);
+  } finally {
+    workLog.record({
+      at: started,
+      requestId: request.id,
+      studentId: request.studentId,
+      studentName: request.studentName,
+      requestTitle: request.title,
+      outcome,
+      zone,
+      changed,
+      checks,
+      note,
+      durationMs: Date.now() - started,
+    });
+    taken.lock.release();
+  }
 }
 
 if (watchMinutes > 0) {
@@ -141,7 +320,8 @@ if (watchMinutes > 0) {
     });
   for (;;) {
     try {
-      round();
+      const walked = round();
+      await work(walked.open);
     } catch (error) {
       // A failed round must not end the watch — the next one may well succeed,
       // and a Principal that dies on one bad read is worse than none.
@@ -151,6 +331,7 @@ if (watchMinutes > 0) {
   }
 }
 
-const overall = round();
+const walked = round();
+await work(walked.open);
 db.close();
-process.exit(overall === 'broken' ? 1 : 0);
+process.exit(walked.overall === 'broken' ? 1 : 0);
