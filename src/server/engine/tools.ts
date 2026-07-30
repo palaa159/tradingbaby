@@ -237,11 +237,13 @@ export function createStudentTools(
         safe('market_glance', async (args) => {
           if (!args.symbol) return text({ universe: market.universe() });
           const snap = await market.snapshot(args.symbol);
+          const last12 = snap.candles1h.slice(-12);
           return text({
             symbol: snap.symbol,
             price: snap.price,
             changePct24h: snap.changePct24h,
-            last12h: snap.candles1h.slice(-12).map((c) => c.close),
+            last12h: last12.map((c) => c.close),
+            last12hVolume: last12.map((c) => c.volume),
           });
         }),
       ),
