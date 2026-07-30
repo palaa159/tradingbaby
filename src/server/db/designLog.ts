@@ -95,6 +95,11 @@ export class DesignLog {
     );
   }
 
+  /** How many rounds have run. Drives which pages the next one looks at. */
+  count(): number {
+    return this.db.query<{ c: number }, []>('SELECT COUNT(*) c FROM design_rounds').get()?.c ?? 0;
+  }
+
   recent(limit = 30): DesignRound[] {
     return this.db
       .query<RoundRow, [number]>('SELECT * FROM design_rounds ORDER BY at DESC LIMIT ?')

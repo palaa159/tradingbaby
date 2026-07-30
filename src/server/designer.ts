@@ -29,7 +29,7 @@
 
 import { classifyChange } from '../core/principal/zones.ts';
 import { DEFAULT_ACADEMY } from './academyConfig.ts';
-import { hardFlags, runAudit, type PageAudit } from './design/audit.ts';
+import { hardFlags, pagesFor, runAudit, type PageAudit } from './design/audit.ts';
 import { DesignLog, type DesignOutcome } from './db/designLog.ts';
 import { SdkLog } from './db/sdkLog.ts';
 import { openAcademyDb } from './db/sqliteStore.ts';
@@ -55,6 +55,21 @@ const PAGES = [
   '/roster',
   '/settings',
 ];
+
+/**
+ * Pages per round, and the longest a round's model turn may take.
+ *
+ * All nine pages at two viewports is eighteen screenshots, and asking for a
+ * critique of eighteen images turned out to be a job the model does not finish:
+ * three consecutive rounds sat past twenty minutes in the turn and were killed
+ * before reaching the gates, at about $1.39 each. Four pages a round, rotating,
+ * covers everything across a morning and leaves each round small enough to end.
+ *
+ * The deadline is the backstop. A round that overruns is aborted and reverted,
+ * which costs one slot instead of a slot and the maker's attention.
+ */
+const PAGES_PER_ROUND = Number(arg('pages') ?? 4);
+const DEADLINE_MS = Number(arg('deadline') ?? 12) * 60_000;
 
 const db = openAcademyDb(arg('db') ?? 'academy.db');
 const designLog = new DesignLog(db);
@@ -141,14 +156,17 @@ async function round(): Promise<void> {
       return;
     }
 
+    const paths = pagesFor(designLog.count(), PAGES_PER_ROUND, PAGES);
     const audits = await runAudit({
       base: BASE,
-      paths: PAGES,
+      paths,
       shotDir: SHOTS,
       student: DEFAULT_ACADEMY.students[0]?.seed,
     });
     flags = hardFlags(audits);
-    console.log(`📸 ตรวจ ${audits.length} หน้า · เจอปัญหาที่วัดได้ ${flags.length} ข้อ`);
+    console.log(
+      `📸 ตรวจ ${audits.length} หน้า (${paths.join(' ')}) · เจอปัญหาที่วัดได้ ${flags.length} ข้อ`,
+    );
 
     const prompt = [
       'นี่คือผลตรวจหน้าจอจริงรอบล่าสุด ดูภาพประกอบทุกภาพก่อนวิจารณ์',
@@ -158,22 +176,42 @@ async function round(): Promise<void> {
       evidence(audits),
     ].join('\n');
 
+    const abort = new AbortController();
+    const deadline = setTimeout(() => {
+      abort.abort();
+    }, DEADLINE_MS);
+
     let text = '';
-    for await (const message of tracedQuery({
-      caller: 'design:round',
-      studentId: undefined,
-      log: sdkLog,
-      prompt,
-      options: {
-        systemPrompt: SYSTEM,
-        model: DEFAULT_ACADEMY.models.dailyReview,
-        maxTurns: 40,
-        permissionMode: 'default',
-        allowedTools: ['Read', 'Edit', 'Write', 'Glob', 'Grep'],
-      },
-    })) {
-      const m = message as { type: string; subtype?: string; result?: string };
-      if (m.type === 'result' && m.subtype === 'success') text = m.result ?? '';
+    try {
+      for await (const message of tracedQuery({
+        caller: 'design:round',
+        studentId: undefined,
+        log: sdkLog,
+        prompt,
+        options: {
+          systemPrompt: SYSTEM,
+          model: DEFAULT_ACADEMY.models.dailyReview,
+          maxTurns: 40,
+          permissionMode: 'default',
+          allowedTools: ['Read', 'Edit', 'Write', 'Glob', 'Grep'],
+          abortController: abort,
+        },
+      })) {
+        const m = message as { type: string; subtype?: string; result?: string };
+        if (m.type === 'result' && m.subtype === 'success') text = m.result ?? '';
+      }
+    } finally {
+      clearTimeout(deadline);
+    }
+
+    if (abort.signal.aborted) {
+      // Half-finished edits are worse than none: the model was cut off mid-
+      // thought, and whatever is in the tree is not a design it stands behind.
+      await revertTree();
+      outcome = 'reverted';
+      note = `เกินเวลา ${DEADLINE_MS / 60_000} นาที — ตัดรอบแล้วย้อนกลับทั้งหมด`;
+      console.log(`⏱️  ${note}`);
+      return;
     }
 
     findings = text

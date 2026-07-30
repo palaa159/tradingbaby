@@ -15,9 +15,11 @@
  * `alpha-designer` looks at the real screen every three hours and fixes what it
  * can inside the green zone. It had never been scheduled at all: it ran once, by
  * hand, crashed, and nothing brought it back — which is most of the reason the
- * screen stopped improving. It leaves its work uncommitted on purpose, and skips
- * any round that starts on a dirty tree, so it does at most one round's worth of
- * change before the maker looks.
+ * screen stopped improving. A round it keeps goes onto a branch of its own and
+ * is pushed; `main` is never written to. It walks four pages per round on a
+ * rotating window and gives up after twelve minutes — all nine pages at both
+ * viewports was a critique of eighteen screenshots, which it never once
+ * finished.
  *
  * `alpha-trader` runs the adopted strategies on the candle clock. It is a
  * separate process on purpose: thinking is rationed by the subscription quota,
