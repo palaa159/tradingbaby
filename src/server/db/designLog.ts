@@ -16,6 +16,10 @@ export interface DesignRound {
   outcome: DesignOutcome;
   /** Machine-measured problems: overflow, tiny targets, console errors. */
   hardFlags: string[];
+  /** How many of those there were before the edit — `hardFlags.length`. */
+  flagsBefore: number;
+  /** How many after the round was re-audited, or null if no re-audit ran. */
+  flagsAfter: number | null;
   /** What the model argued, in its own words. */
   findings: string[];
   /** Files it actually changed, after the zone check. */
@@ -29,6 +33,8 @@ interface RoundRow {
   at: number;
   outcome: string;
   hard_flags: string;
+  flags_before: number;
+  flags_after: number | null;
   findings: string;
   changed: string;
   note: string;
@@ -42,6 +48,8 @@ export function migrateDesignLog(db: Database): void {
       at INTEGER NOT NULL,
       outcome TEXT NOT NULL,
       hard_flags TEXT NOT NULL DEFAULT '[]',
+      flags_before INTEGER NOT NULL DEFAULT 0,
+      flags_after INTEGER,
       findings TEXT NOT NULL DEFAULT '[]',
       changed TEXT NOT NULL DEFAULT '[]',
       note TEXT NOT NULL DEFAULT '',
@@ -49,6 +57,13 @@ export function migrateDesignLog(db: Database): void {
     )
   `);
   db.run('CREATE INDEX IF NOT EXISTS design_rounds_at ON design_rounds (at DESC)');
+  // Rounds recorded before guardrail 3 existed keep 0/null: no comparison was made.
+  const columns = db.query<{ name: string }, []>('PRAGMA table_info(design_rounds)').all();
+  const has = (name: string): boolean => columns.some((c) => c.name === name);
+  if (!has('flags_before')) {
+    db.run('ALTER TABLE design_rounds ADD COLUMN flags_before INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!has('flags_after')) db.run('ALTER TABLE design_rounds ADD COLUMN flags_after INTEGER');
 }
 
 export class DesignLog {
@@ -61,12 +76,15 @@ export class DesignLog {
 
   record(round: Omit<DesignRound, 'id'>): void {
     this.db.run(
-      `INSERT INTO design_rounds (at, outcome, hard_flags, findings, changed, note, duration_ms)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO design_rounds
+         (at, outcome, hard_flags, flags_before, flags_after, findings, changed, note, duration_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         round.at,
         round.outcome,
         JSON.stringify(round.hardFlags),
+        round.flagsBefore,
+        round.flagsAfter,
         JSON.stringify(round.findings),
         JSON.stringify(round.changed),
         round.note,
@@ -84,6 +102,8 @@ export class DesignLog {
         at: r.at,
         outcome: r.outcome as DesignOutcome,
         hardFlags: JSON.parse(r.hard_flags) as string[],
+        flagsBefore: r.flags_before,
+        flagsAfter: r.flags_after,
         findings: JSON.parse(r.findings) as string[],
         changed: JSON.parse(r.changed) as string[],
         note: r.note,

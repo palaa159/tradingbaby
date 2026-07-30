@@ -19,6 +19,9 @@
  *   2. typecheck, tests and build must all pass, or the whole round is reverted.
  *   3. The audit is re-run afterwards. If the machine-measured problems got
  *      worse, the round is reverted — a redesign that regresses is not a fix.
+ *      The re-run measures the build guardrail 2 just made, served on a scratch
+ *      port, *not* BASE: the maker's dashboard runs from an older build, so
+ *      re-auditing BASE would grade the screen from before the edit.
  *
  * It never commits or deploys. The maker's own pipeline does that, so a bad
  * round is a dirty working tree rather than a live outage.
@@ -40,6 +43,8 @@ function arg(name: string): string | undefined {
 
 const BASE = arg('base') ?? 'https://alpha.5lab.co';
 const SHOTS = arg('shots') ?? '/var/lib/alpha-academy/design';
+/** Scratch port for the re-audit — not 4173, the maker's dashboard lives there. */
+const PORT = arg('port') ?? '4179';
 const PAGES = [
   '/brain',
   '/trades',
@@ -52,7 +57,8 @@ const PAGES = [
   '/settings',
 ];
 
-const db = openAcademyDb(arg('db') ?? 'academy.db');
+const DB_PATH = arg('db') ?? 'academy.db';
+const db = openAcademyDb(DB_PATH);
 const designLog = new DesignLog(db);
 const sdkLog = new SdkLog(db);
 
@@ -115,6 +121,49 @@ const SYSTEM = `เธอคือ "Maker Designer" ของ Alpha Academy — 
 บรรทัดแรกขึ้นต้นด้วย FINDINGS: ตามด้วยรายการปัญหาที่เจอ อันละบรรทัด
 บรรทัดสุดท้ายขึ้นต้นด้วย CHANGED: ตามด้วยสิ่งที่แก้ไป (หรือ CHANGED: none)`;
 
+/**
+ * Guardrail 3's measurement: the same audit, against the build guardrail 2 just
+ * produced, served on a scratch port. The maker's dashboard keeps serving its
+ * own build throughout, so a bad round is still only a dirty working tree.
+ *
+ * null means the check could not be run — which is not the same as "no
+ * regression", so the caller treats it as a failure.
+ */
+async function flagsAfterEdit(): Promise<string[] | null> {
+  const shots = `${SHOTS}/after`;
+  await Bun.$`mkdir -p ${shots}`.quiet();
+  const server = Bun.spawn(['bun', './node_modules/.bin/next', 'start', '-p', PORT], {
+    cwd: process.cwd(),
+    env: { ...process.env, ACADEMY_DB: DB_PATH },
+    stdout: 'ignore',
+    stderr: 'ignore',
+  });
+  const base = `http://127.0.0.1:${PORT}`;
+  try {
+    let up = false;
+    for (let i = 0; i < 60 && !up; i++) {
+      await Bun.sleep(500);
+      up = await fetch(base + (PAGES[0] ?? '/'))
+        .then((r) => r.ok)
+        .catch(() => false);
+    }
+    if (!up) return null;
+    const audits = await runAudit({
+      base,
+      paths: PAGES,
+      shotDir: shots,
+      student: DEFAULT_ACADEMY.students[0]?.seed,
+    });
+    return hardFlags(audits);
+  } catch (error) {
+    console.error(`ตรวจซ้ำล้ม: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  } finally {
+    server.kill();
+    await server.exited;
+  }
+}
+
 async function round(): Promise<void> {
   const started = Date.now();
   let outcome: DesignOutcome = 'failed';
@@ -122,6 +171,7 @@ async function round(): Promise<void> {
   let changed: string[] = [];
   let note = '';
   let flags: string[] = [];
+  let flagsAfter: number | null = null;
 
   try {
     await Bun.$`mkdir -p ${SHOTS}`.quiet();
@@ -132,8 +182,8 @@ async function round(): Promise<void> {
     if (pre.out.trim()) {
       note = 'ข้ามรอบนี้ — working tree ไม่สะอาด แยกไม่ออกว่าอะไรเป็นของ designer';
       designLog.record({
-        at: started, outcome: 'failed', hardFlags: [], findings: [], changed: [],
-        note, durationMs: Date.now() - started,
+        at: started, outcome: 'failed', hardFlags: [], flagsBefore: 0, flagsAfter: null,
+        findings: [], changed: [], note, durationMs: Date.now() - started,
       });
       console.log(note);
       return;
@@ -220,8 +270,28 @@ async function round(): Promise<void> {
       }
     }
 
+    // Guardrail 3: measure the edited screen. More machine-measured problems
+    // than we started with means the round is a regression, not a fix.
+    const after = await flagsAfterEdit();
+    flagsAfter = after === null ? null : after.length;
+    if (after === null || after.length > flags.length) {
+      await sh(['git', 'checkout', '--', '.']);
+      await sh(['git', 'clean', '-fd', 'src']);
+      outcome = 'reverted';
+      note =
+        after === null
+          ? 'ตรวจซ้ำไม่ได้ พิสูจน์ไม่ได้ว่าไม่แย่ลง — ย้อนกลับทั้งรอบ'
+          : `ปัญหาที่วัดได้แย่ลง ${flags.length} → ${after.length} — ย้อนกลับทั้งรอบ\n` +
+            after
+              .filter((f) => !flags.includes(f))
+              .map((f) => `+ ${f}`)
+              .join('\n');
+      console.log(`↩️  ${note}`);
+      return;
+    }
+
     outcome = 'changed';
-    note = `แก้ ${changed.length} ไฟล์: ${changed.join(', ')}`;
+    note = `แก้ ${changed.length} ไฟล์: ${changed.join(', ')} · ปัญหาที่วัดได้ ${flags.length} → ${after.length}`;
     console.log(`✍️  ${note}`);
   } catch (error) {
     note = error instanceof Error ? error.message : String(error);
@@ -231,6 +301,8 @@ async function round(): Promise<void> {
       at: started,
       outcome,
       hardFlags: flags,
+      flagsBefore: flags.length,
+      flagsAfter,
       findings,
       changed,
       note,
