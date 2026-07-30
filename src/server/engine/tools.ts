@@ -102,6 +102,29 @@ const STRATEGY_SPEC_SHAPE = z
   })
   .describe('สูตรเทรดแบบกฎตายตัว');
 
+/** Pure so market_glance's logic is testable without spinning up the MCP transport. */
+export async function marketGlance(
+  market: MarketDataProvider,
+  symbol: string,
+  bars?: number,
+): Promise<Record<string, unknown>> {
+  const snap = await market.snapshot(symbol);
+  const last12 = snap.candles1h.slice(-12);
+  const result: Record<string, unknown> = {
+    symbol: snap.symbol,
+    price: snap.price,
+    changePct24h: snap.changePct24h,
+    last12h: last12.map((c) => c.close),
+    last12hVolume: last12.map((c) => c.volume),
+  };
+  if (bars) {
+    const candles = (await market.history(symbol, bars)).slice(-bars);
+    result.candles = candles.map((c) => c.close);
+    result.candlesVolume = candles.map((c) => c.volume);
+  }
+  return result;
+}
+
 export interface LibraryAccess {
   /** Read fresh each call — the library changes as classmates prove things. */
   entries: () => LibraryEntry[];
@@ -230,21 +253,21 @@ export function createStudentTools(
       ),
       tool(
         'market_glance',
-        'ชำเลืองดูตลาด: ราคาปัจจุบัน การเปลี่ยนแปลง 24 ชม. และแท่งเทียนรายชั่วโมงล่าสุดของเหรียญใน universe',
+        'ชำเลืองดูตลาด: ราคาปัจจุบัน การเปลี่ยนแปลง 24 ชม. และแท่งเทียนรายชั่วโมงล่าสุดของเหรียญใน universe' +
+          ' — ใส่ bars เพื่อดูย้อนหลังไกลกว่า 12 ชม. (สูงสุด 1000 แท่ง)',
         {
           symbol: z.string().optional().describe('เช่น BTC/USDT — ไม่ใส่ = ดูรายชื่อที่มี'),
+          bars: z
+            .number()
+            .int()
+            .min(1)
+            .max(1000)
+            .optional()
+            .describe('จำนวนแท่งย้อนหลังที่อยากดู (สูงสุด 1000) — ไม่ใส่ = ดูแค่ 12 แท่งล่าสุดเหมือนเดิม'),
         },
         safe('market_glance', async (args) => {
           if (!args.symbol) return text({ universe: market.universe() });
-          const snap = await market.snapshot(args.symbol);
-          const last12 = snap.candles1h.slice(-12);
-          return text({
-            symbol: snap.symbol,
-            price: snap.price,
-            changePct24h: snap.changePct24h,
-            last12h: last12.map((c) => c.close),
-            last12hVolume: last12.map((c) => c.volume),
-          });
+          return text(await marketGlance(market, args.symbol, args.bars));
         }),
       ),
       tool(
