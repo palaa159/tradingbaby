@@ -75,7 +75,10 @@ export async function runCycle(kind: CycleKind, opts: RunCycleOptions): Promise<
     options: {
       systemPrompt: buildSystemPrompt(opts.student, hunger, kind, curiosity, brain),
       model,
-      maxTurns: opts.maxTurns ?? (kind === 'short' ? 20 : 36),
+      // Headroom over what a working cycle actually costs: successful shorts
+      // have run to 33 turns and reviews to 38, so the old 20/36 caps were
+      // cutting off students mid-experiment, not reining in runaways.
+      maxTurns: opts.maxTurns ?? (kind === 'short' ? 40 : 56),
       // 'default' + allowedTools: whitelisted tools run without prompting,
       // everything else is denied. (bypassPermissions breaks under root.)
       permissionMode: 'default',

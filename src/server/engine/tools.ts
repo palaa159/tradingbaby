@@ -117,6 +117,12 @@ export function createStudentTools(
   return createSdkMcpServer({
     name: 'academy',
     version: '1.0.0',
+    // Never defer these behind tool search. When the SDK hid them, students
+    // spent whole cycles calling ToolSearch and nothing else — two runs burned
+    // all 20 turns on it and touched the graph zero times. There are thirteen
+    // tools here and every one is the point of the cycle; they belong in the
+    // turn-1 prompt.
+    alwaysLoad: true,
     tools: [
       tool(
         'graph_read',

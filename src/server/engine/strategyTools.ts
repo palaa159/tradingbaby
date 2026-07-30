@@ -56,7 +56,20 @@ export interface TestOutcome {
   recorded?: { hypothesisId: string; strategyNodeId?: string; activatedId?: string };
 }
 
-const BARS = 400;
+/**
+ * The backtest window, in hourly candles — about six weeks.
+ *
+ * It was 400 (17 days), and at that width the five-trade evidence floor in
+ * `judge()` was unreachable for ordinary rules. Measured on BTC/USDT: rsi 30/70
+ * traded 2 times, rsi 40/60 four, an sma cross three — every one of them
+ * "ยังตัดสินไม่ได้", which is what the school produced for its first day: zero
+ * strategies from eighteen cycles. At 1000 the same three trade 5, 11 and 13.
+ *
+ * 1000 is Binance's per-request cap. Kraken serves 720 for hourly candles and
+ * the fallback quietly takes what it gets — a narrower window, still wider than
+ * what was there before.
+ */
+const BARS = 1000;
 
 /**
  * Backtest a spec across its symbols against buy-and-hold on the same window,
