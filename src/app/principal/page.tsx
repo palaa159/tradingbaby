@@ -53,6 +53,9 @@ export default function Page() {
               </p>
             </CardHeader>
             <CardContent className="flex flex-col gap-1 px-3 text-sm">
+              {w.branch ? (
+                <p className="font-mono text-[11px] text-[var(--ok)]">🌿 {w.branch}</p>
+              ) : null}
               <p className="whitespace-pre-wrap">{w.note}</p>
               {w.changed.length ? (
                 <p className="text-[11px] text-muted-foreground">

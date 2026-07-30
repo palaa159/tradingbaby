@@ -67,9 +67,16 @@ export function describeBrainState(state: BrainState): string {
   }
 
   if (state.readyToClaim) {
+    // A student whose hypotheses were all judged is in the same position as one
+    // that never claimed — nothing pending — but telling it that it has never
+    // dared claim anything is simply false, and it has the debunked notes to
+    // prove otherwise.
+    const claimedBefore = (state.counts.hypothesis ?? 0) > 0;
     lines.push(
       '',
-      '⚠ เธอสะสมความรู้มาพอสมควรแล้ว แต่**ยังไม่เคยกล้าอ้างอะไรที่ทดสอบได้เลยสักข้อ**',
+      claimedBefore
+        ? '⚠ ข้อสงสัยของเธอถูกตัดสินไปหมดแล้ว ตอนนี้ไม่มีอะไรค้างให้พิสูจน์เลยสักข้อ'
+        : '⚠ เธอสะสมความรู้มาพอสมควรแล้ว แต่**ยังไม่เคยกล้าอ้างอะไรที่ทดสอบได้เลยสักข้อ**',
       'ความรู้ที่ไม่เคยถูกวัดก็ยังไม่นับว่ารู้จริง — ถึงเวลาตั้งข้อสงสัยแล้วเอาไปพิสูจน์',
     );
   }

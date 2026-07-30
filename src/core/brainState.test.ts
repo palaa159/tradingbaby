@@ -102,4 +102,22 @@ test('a judged hypothesis is no longer pending', () => {
   );
   assert.equal(state.untested.length, 0);
   assert.equal(state.readyToClaim, true, 'settled beliefs free the student to claim again');
+  const text = describeBrainState(state);
+  assert.ok(
+    text.includes('ถูกตัดสินไปหมดแล้ว'),
+    'a student that has claimed and been judged is told that, not that it never claimed',
+  );
+  assert.ok(!text.includes('ยังไม่เคยกล้าอ้าง'), 'it has the debunked notes to prove otherwise');
+});
+
+test('a student that has never claimed is told so', () => {
+  const state = readBrainState(
+    store([
+      { kind: 'concept', confidence: 0.6 },
+      { kind: 'concept', confidence: 0.7 },
+    ]),
+    's1',
+  );
+  assert.equal(state.readyToClaim, true);
+  assert.ok(describeBrainState(state).includes('ยังไม่เคยกล้าอ้าง'));
 });

@@ -117,6 +117,22 @@ export interface AuditOptions {
   student?: string | undefined;
 }
 
+/**
+ * The slice of pages one round looks at.
+ *
+ * Every page at both viewports was eighteen screenshots, and a critique of
+ * eighteen images is a job the model did not finish — three rounds running sat
+ * past twenty minutes and were killed before the gates. A window that advances
+ * by round number covers the whole screen across a morning while keeping any
+ * one round small enough to end. Driven by the round count rather than a clock
+ * or a random pick, so the same round number always audits the same pages.
+ */
+export function pagesFor(round: number, perRound: number, pages: string[]): string[] {
+  if (perRound >= pages.length) return [...pages];
+  const start = ((round % pages.length) + pages.length) % pages.length;
+  return Array.from({ length: perRound }, (_, i) => pages[(start + i) % pages.length] as string);
+}
+
 /** One full sweep: every page, both viewports. */
 export async function runAudit(opts: AuditOptions): Promise<PageAudit[]> {
   const browser: Browser = await chromium.launch({

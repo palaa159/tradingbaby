@@ -1,6 +1,19 @@
 import { describe, expect, test } from 'bun:test';
 
-import { changedPaths } from './changed.ts';
+import { branchName, changedPaths } from './git.ts';
+
+describe('branchName', () => {
+  test('one branch per round, named for when the round happened', () => {
+    expect(branchName('designer', Date.UTC(2026, 6, 30, 3, 15, 20))).toBe(
+      'designer/2026-07-30-03-15-20',
+    );
+  });
+
+  test('two rounds a second apart never collide', () => {
+    const at = Date.UTC(2026, 6, 30, 3, 15, 20);
+    expect(branchName('principal', at)).not.toBe(branchName('principal', at + 1000));
+  });
+});
 
 describe('changedPaths', () => {
   test('keeps the first letter of a modified path', () => {

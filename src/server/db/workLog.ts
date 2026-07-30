@@ -12,6 +12,8 @@
 
 import type { Database } from 'bun:sqlite';
 
+import { addColumn } from './designLog.ts';
+
 export type WorkOutcome =
   /** Code written, checks green, waiting for the maker. */
   | 'written'
@@ -35,6 +37,8 @@ export interface WorkItem {
   changed: string[];
   /** typecheck / test / build, in the order they ran. */
   checks: { name: string; ok: boolean }[];
+  /** The branch the work was committed to. Empty when nothing was kept. */
+  branch: string;
   /** The Principal's own account of what it did and why. */
   note: string;
   durationMs: number;
@@ -51,6 +55,7 @@ interface WorkRow {
   zone: string;
   changed: string;
   checks: string;
+  branch: string | null;
   note: string;
   duration_ms: number;
 }
@@ -68,12 +73,14 @@ export function migrateWorkLog(db: Database): void {
       zone TEXT NOT NULL DEFAULT '',
       changed TEXT NOT NULL DEFAULT '[]',
       checks TEXT NOT NULL DEFAULT '[]',
+      branch TEXT NOT NULL DEFAULT '',
       note TEXT NOT NULL DEFAULT '',
       duration_ms INTEGER NOT NULL DEFAULT 0
     )
   `);
   db.run('CREATE INDEX IF NOT EXISTS principal_works_at ON principal_works (at DESC)');
   db.run('CREATE INDEX IF NOT EXISTS principal_works_request ON principal_works (request_id)');
+  addColumn(db, 'principal_works', 'branch');
 }
 
 export class WorkLog {
@@ -88,8 +95,8 @@ export class WorkLog {
     this.db.run(
       `INSERT INTO principal_works
          (at, request_id, student_id, student_name, request_title, outcome, zone,
-          changed, checks, note, duration_ms)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          changed, checks, branch, note, duration_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         item.at,
         item.requestId,
@@ -100,6 +107,7 @@ export class WorkLog {
         item.zone,
         JSON.stringify(item.changed),
         JSON.stringify(item.checks),
+        item.branch,
         item.note,
         item.durationMs,
       ],
@@ -131,6 +139,7 @@ export class WorkLog {
         zone: r.zone,
         changed: JSON.parse(r.changed) as string[],
         checks: JSON.parse(r.checks) as { name: string; ok: boolean }[],
+        branch: r.branch ?? '',
         note: r.note,
         durationMs: r.duration_ms,
       }));

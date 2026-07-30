@@ -24,6 +24,8 @@ export interface DesignRound {
   findings: string[];
   /** Files it actually changed, after the zone check. */
   changed: string[];
+  /** The branch the round was committed to. Empty when nothing was kept. */
+  branch: string;
   note: string;
   durationMs: number;
 }
@@ -37,6 +39,7 @@ interface RoundRow {
   flags_after: number | null;
   findings: string;
   changed: string;
+  branch: string | null;
   note: string;
   duration_ms: number;
 }
@@ -57,13 +60,29 @@ export function migrateDesignLog(db: Database): void {
     )
   `);
   db.run('CREATE INDEX IF NOT EXISTS design_rounds_at ON design_rounds (at DESC)');
-  // Rounds recorded before guardrail 3 existed keep 0/null: no comparison was made.
-  const columns = db.query<{ name: string }, []>('PRAGMA table_info(design_rounds)').all();
-  const has = (name: string): boolean => columns.some((c) => c.name === name);
-  if (!has('flags_before')) {
-    db.run('ALTER TABLE design_rounds ADD COLUMN flags_before INTEGER NOT NULL DEFAULT 0');
-  }
-  if (!has('flags_after')) db.run('ALTER TABLE design_rounds ADD COLUMN flags_after INTEGER');
+  addColumn(db, 'design_rounds', 'branch');
+  // Rounds from before guardrail 3 keep 0/null: no comparison was ever made.
+  addColumn(db, 'design_rounds', 'flags_before', 'INTEGER NOT NULL DEFAULT 0');
+  addColumn(db, 'design_rounds', 'flags_after', 'INTEGER');
+}
+
+/**
+ * Add a column to a table that already exists in the maker's database.
+ *
+ * Spec §9.5: schema changes are additions, never rewrites — an old row keeps
+ * every meaning it had, and simply has nothing to say about the new column.
+ */
+export function addColumn(
+  db: Database,
+  table: string,
+  column: string,
+  ddl = "TEXT NOT NULL DEFAULT ''",
+): void {
+  const present = db
+    .query<{ name: string }, []>(`PRAGMA table_info(${table})`)
+    .all()
+    .some((c) => c.name === column);
+  if (!present) db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
 }
 
 export class DesignLog {
@@ -77,8 +96,9 @@ export class DesignLog {
   record(round: Omit<DesignRound, 'id'>): void {
     this.db.run(
       `INSERT INTO design_rounds
-         (at, outcome, hard_flags, flags_before, flags_after, findings, changed, note, duration_ms)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (at, outcome, hard_flags, flags_before, flags_after,
+          findings, changed, branch, note, duration_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         round.at,
         round.outcome,
@@ -87,10 +107,16 @@ export class DesignLog {
         round.flagsAfter,
         JSON.stringify(round.findings),
         JSON.stringify(round.changed),
+        round.branch,
         round.note,
         round.durationMs,
       ],
     );
+  }
+
+  /** How many rounds have run. Drives which pages the next one looks at. */
+  count(): number {
+    return this.db.query<{ c: number }, []>('SELECT COUNT(*) c FROM design_rounds').get()?.c ?? 0;
   }
 
   recent(limit = 30): DesignRound[] {
@@ -106,6 +132,7 @@ export class DesignLog {
         flagsAfter: r.flags_after,
         findings: JSON.parse(r.findings) as string[],
         changed: JSON.parse(r.changed) as string[],
+        branch: r.branch ?? '',
         note: r.note,
         durationMs: r.duration_ms,
       }));

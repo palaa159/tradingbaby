@@ -19,22 +19,27 @@
  *   2. typecheck, tests and build must all pass, or the whole round is reverted.
  *   3. The audit is re-run afterwards. If the machine-measured problems got
  *      worse, the round is reverted — a redesign that regresses is not a fix.
- *      The re-run measures the build guardrail 2 just made, served on a scratch
- *      port, *not* BASE: the maker's dashboard runs from an older build, so
- *      re-auditing BASE would grade the screen from before the edit.
+ *      The re-run happens before the commit, and measures the build guardrail 2
+ *      just made, served on a scratch port — *not* BASE. The maker's dashboard
+ *      runs from an older build, so re-auditing BASE would grade the screen from
+ *      before the edit.
  *
- * It never commits or deploys. The maker's own pipeline does that, so a bad
- * round is a dirty working tree rather than a live outage.
+ * A round it keeps is committed to a branch of its own and pushed; `main` is
+ * never touched and nothing is ever merged. It used to leave the work
+ * uncommitted, which was safe and also a dead end — it skips any round that
+ * starts on a dirty tree, so the first change it kept stopped it until the maker
+ * came back and committed by hand.
  */
 
 import { classifyChange } from '../core/principal/zones.ts';
 import { DEFAULT_ACADEMY } from './academyConfig.ts';
-import { hardFlags, runAudit, type PageAudit } from './design/audit.ts';
-import { changedPaths } from './design/changed.ts';
+import { hardFlags, pagesFor, runAudit, type PageAudit } from './design/audit.ts';
 import { DesignLog, type DesignOutcome } from './db/designLog.ts';
 import { SdkLog } from './db/sdkLog.ts';
 import { openAcademyDb } from './db/sqliteStore.ts';
 import { tracedQuery } from './engine/sdkTrace.ts';
+import { changedPaths, handOff, revertTree, sh } from './git.ts';
+import { DEFAULT_LOCK_PATH, takeWorkLock } from './workLock.ts';
 
 function arg(name: string): string | undefined {
   const prefix = `--${name}=`;
@@ -57,20 +62,25 @@ const PAGES = [
   '/settings',
 ];
 
+/**
+ * Pages per round, and the longest a round's model turn may take.
+ *
+ * All nine pages at two viewports is eighteen screenshots, and asking for a
+ * critique of eighteen images turned out to be a job the model does not finish:
+ * three consecutive rounds sat past twenty minutes in the turn and were killed
+ * before reaching the gates, at about $1.39 each. Four pages a round, rotating,
+ * covers everything across a morning and leaves each round small enough to end.
+ *
+ * The deadline is the backstop. A round that overruns is aborted and reverted,
+ * which costs one slot instead of a slot and the maker's attention.
+ */
+const PAGES_PER_ROUND = Number(arg('pages') ?? 4);
+const DEADLINE_MS = Number(arg('deadline') ?? 12) * 60_000;
+
 const DB_PATH = arg('db') ?? 'academy.db';
 const db = openAcademyDb(DB_PATH);
 const designLog = new DesignLog(db);
 const sdkLog = new SdkLog(db);
-
-const sh = async (cmd: string[]): Promise<{ ok: boolean; out: string }> => {
-  const proc = Bun.spawn(cmd, { cwd: process.cwd(), stdout: 'pipe', stderr: 'pipe' });
-  const [out, err] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-  const code = await proc.exited;
-  return { ok: code === 0, out: (out + err).slice(-4000) };
-};
 
 /** Compact enough for a prompt, complete enough to argue from. */
 function evidence(audits: PageAudit[]): string {
@@ -117,6 +127,12 @@ const SYSTEM = `เธอคือ "Maker Designer" ของ Alpha Academy — 
 - ห้ามลบฟีเจอร์ที่มีอยู่เพื่อให้ดู "สะอาด" — ย้าย จัดกลุ่ม หรือย่อได้ แต่ห้ามทำให้หายไป
 - แก้ให้น้อยที่สุดที่แก้ปัญหาจริง ถ้ารอบนี้ไม่มีอะไรต้องแก้ ก็บอกว่าไม่มี
 
+**เธอไม่มี Bash และเรียกคำสั่งเชลล์ไม่ได้เลย** — เครื่องมือที่มีคือ Read, Edit, Write, Glob, Grep
+เท่านั้น เรียกอย่างอื่นจะถูกปฏิเสธและเสียเทิร์นฟรีๆ (รอบก่อนเสียไป 22 เทิร์นกับการลอง Bash
+จนหมดโควตาเทิร์นแล้วไม่ได้อะไรเลย) อยากดูไฟล์ใช้ Glob/Grep/Read
+ไม่ต้องรัน typecheck, เทสต์ หรือ build เอง — ระบบรันให้ทั้งสามอย่างหลังเธอจบรอบ
+ถ้าอันไหนพังจะย้อนงานเธอทั้งหมดเอง เธอมีหน้าที่แก้ให้ถูก ไม่ใช่หน้าที่ตรวจ
+
 ตอบกลับด้วยการ**ลงมือแก้ไฟล์เลย** (ใช้ Edit/Write) แล้วปิดท้ายด้วยสรุปสั้นๆ:
 บรรทัดแรกขึ้นต้นด้วย FINDINGS: ตามด้วยรายการปัญหาที่เจอ อันละบรรทัด
 บรรทัดสุดท้ายขึ้นต้นด้วย CHANGED: ตามด้วยสิ่งที่แก้ไป (หรือ CHANGED: none)`;
@@ -129,7 +145,7 @@ const SYSTEM = `เธอคือ "Maker Designer" ของ Alpha Academy — 
  * null means the check could not be run — which is not the same as "no
  * regression", so the caller treats it as a failure.
  */
-async function flagsAfterEdit(): Promise<string[] | null> {
+async function flagsAfterEdit(paths: string[]): Promise<string[] | null> {
   const shots = `${SHOTS}/after`;
   await Bun.$`mkdir -p ${shots}`.quiet();
   const server = Bun.spawn(['bun', './node_modules/.bin/next', 'start', '-p', PORT], {
@@ -143,14 +159,14 @@ async function flagsAfterEdit(): Promise<string[] | null> {
     let up = false;
     for (let i = 0; i < 60 && !up; i++) {
       await Bun.sleep(500);
-      up = await fetch(base + (PAGES[0] ?? '/'))
+      up = await fetch(base + (paths[0] ?? '/'))
         .then((r) => r.ok)
         .catch(() => false);
     }
     if (!up) return null;
     const audits = await runAudit({
       base,
-      paths: PAGES,
+      paths,
       shotDir: shots,
       student: DEFAULT_ACADEMY.students[0]?.seed,
     });
@@ -170,8 +186,18 @@ async function round(): Promise<void> {
   let findings: string[] = [];
   let changed: string[] = [];
   let note = '';
+  let branch = '';
   let flags: string[] = [];
   let flagsAfter: number | null = null;
+
+  // The Principal edits the same tree and switches the same branches. Whichever
+  // of them is holding this, the other waits — an agent that checked out a
+  // branch under the other's feet would take its work with it.
+  const taken = takeWorkLock(DEFAULT_LOCK_PATH, 'designer');
+  if ('heldBy' in taken) {
+    console.log(`⏸️  ${taken.heldBy} กำลังแก้โค้ดอยู่ — รอรอบหน้า`);
+    return;
+  }
 
   try {
     await Bun.$`mkdir -p ${SHOTS}`.quiet();
@@ -180,23 +206,24 @@ async function round(): Promise<void> {
     // unanswerable, so refuse rather than guess.
     const pre = await sh(['git', 'status', '--porcelain']);
     if (pre.out.trim()) {
+      // Recorded by the `finally`, once. It used to write the row here as well,
+      // so every skipped round appeared in the log twice.
       note = 'ข้ามรอบนี้ — working tree ไม่สะอาด แยกไม่ออกว่าอะไรเป็นของ designer';
-      designLog.record({
-        at: started, outcome: 'failed', hardFlags: [], flagsBefore: 0, flagsAfter: null,
-        findings: [], changed: [], note, durationMs: Date.now() - started,
-      });
       console.log(note);
       return;
     }
 
+    const paths = pagesFor(designLog.count(), PAGES_PER_ROUND, PAGES);
     const audits = await runAudit({
       base: BASE,
-      paths: PAGES,
+      paths,
       shotDir: SHOTS,
       student: DEFAULT_ACADEMY.students[0]?.seed,
     });
     flags = hardFlags(audits);
-    console.log(`📸 ตรวจ ${audits.length} หน้า · เจอปัญหาที่วัดได้ ${flags.length} ข้อ`);
+    console.log(
+      `📸 ตรวจ ${audits.length} หน้า (${paths.join(' ')}) · เจอปัญหาที่วัดได้ ${flags.length} ข้อ`,
+    );
 
     const prompt = [
       'นี่คือผลตรวจหน้าจอจริงรอบล่าสุด ดูภาพประกอบทุกภาพก่อนวิจารณ์',
@@ -206,22 +233,42 @@ async function round(): Promise<void> {
       evidence(audits),
     ].join('\n');
 
+    const abort = new AbortController();
+    const deadline = setTimeout(() => {
+      abort.abort();
+    }, DEADLINE_MS);
+
     let text = '';
-    for await (const message of tracedQuery({
-      caller: 'design:round',
-      studentId: undefined,
-      log: sdkLog,
-      prompt,
-      options: {
-        systemPrompt: SYSTEM,
-        model: DEFAULT_ACADEMY.models.dailyReview,
-        maxTurns: 40,
-        permissionMode: 'default',
-        allowedTools: ['Read', 'Edit', 'Write', 'Glob', 'Grep'],
-      },
-    })) {
-      const m = message as { type: string; subtype?: string; result?: string };
-      if (m.type === 'result' && m.subtype === 'success') text = m.result ?? '';
+    try {
+      for await (const message of tracedQuery({
+        caller: 'design:round',
+        studentId: undefined,
+        log: sdkLog,
+        prompt,
+        options: {
+          systemPrompt: SYSTEM,
+          model: DEFAULT_ACADEMY.models.dailyReview,
+          maxTurns: 40,
+          permissionMode: 'default',
+          allowedTools: ['Read', 'Edit', 'Write', 'Glob', 'Grep'],
+          abortController: abort,
+        },
+      })) {
+        const m = message as { type: string; subtype?: string; result?: string };
+        if (m.type === 'result' && m.subtype === 'success') text = m.result ?? '';
+      }
+    } finally {
+      clearTimeout(deadline);
+    }
+
+    if (abort.signal.aborted) {
+      // Half-finished edits are worse than none: the model was cut off mid-
+      // thought, and whatever is in the tree is not a design it stands behind.
+      await revertTree();
+      outcome = 'reverted';
+      note = `เกินเวลา ${DEADLINE_MS / 60_000} นาที — ตัดรอบแล้วย้อนกลับทั้งหมด`;
+      console.log(`⏱️  ${note}`);
+      return;
     }
 
     findings = text
@@ -245,8 +292,7 @@ async function round(): Promise<void> {
     // the Principal. Anything outside green goes back.
     const verdict = classifyChange(changed);
     if (verdict.zone !== 'green') {
-      await sh(['git', 'checkout', '--', '.']);
-      await sh(['git', 'clean', '-fd', 'src']);
+      await revertTree();
       outcome = 'reverted';
       note = `แตะนอกโซนเขียว — ${verdict.reason}`;
       console.log(`↩️  ${note}`);
@@ -261,8 +307,7 @@ async function round(): Promise<void> {
     ] as const) {
       const res = await sh([...cmd]);
       if (!res.ok) {
-        await sh(['git', 'checkout', '--', '.']);
-        await sh(['git', 'clean', '-fd', 'src']);
+        await revertTree();
         outcome = 'reverted';
         note = `${label} พัง — ย้อนกลับทั้งรอบ`;
         console.log(`↩️  ${note}\n${res.out.slice(-800)}`);
@@ -270,13 +315,13 @@ async function round(): Promise<void> {
       }
     }
 
-    // Guardrail 3: measure the edited screen. More machine-measured problems
-    // than we started with means the round is a regression, not a fix.
-    const after = await flagsAfterEdit();
+    // Guardrail 3: measure the screen it just edited, over the same pages this
+    // round audited. More machine-measured problems than we started with means
+    // a regression, and a regression is not something to hand the maker.
+    const after = await flagsAfterEdit(paths);
     flagsAfter = after === null ? null : after.length;
     if (after === null || after.length > flags.length) {
-      await sh(['git', 'checkout', '--', '.']);
-      await sh(['git', 'clean', '-fd', 'src']);
+      await revertTree();
       outcome = 'reverted';
       note =
         after === null
@@ -290,8 +335,34 @@ async function round(): Promise<void> {
       return;
     }
 
+    const handed = await handOff({
+      prefix: 'designer',
+      subject: `Designer: ${findings[0]?.slice(0, 60) ?? `แก้หน้าจอ ${changed.length} ไฟล์`}`,
+      body: [
+        findings.length ? `สิ่งที่เจอ:\n${findings.map((f) => `- ${f}`).join('\n')}` : '',
+        flags.length ? `ปัญหาที่เครื่องวัดได้ก่อนแก้:\n${flags.map((f) => `- ${f}`).join('\n')}` : '',
+        'เขียนโดย alpha-designer แบบไม่มีคนเฝ้า โซนเขียวเท่านั้น',
+        'typecheck, test และ build ผ่านครบก่อน commit — ยังไม่ merge',
+        `ตรวจซ้ำหลัง build: ปัญหาที่วัดได้ ${flags.length} → ${after.length}`,
+      ]
+        .filter(Boolean)
+        .join('\n\n'),
+      paths: changed,
+      at: started,
+    });
+
+    if (!handed.ok) {
+      outcome = 'reverted';
+      note = `ส่งมอบงานไม่สำเร็จ — ${handed.error}`;
+      console.log(`↩️  ${note}`);
+      return;
+    }
+
+    branch = handed.branch;
     outcome = 'changed';
-    note = `แก้ ${changed.length} ไฟล์: ${changed.join(', ')} · ปัญหาที่วัดได้ ${flags.length} → ${after.length}`;
+    note =
+      `แก้ ${changed.length} ไฟล์: ${changed.join(', ')} · ` +
+      `ปัญหาที่วัดได้ ${flags.length} → ${after.length}\n${handed.note}`;
     console.log(`✍️  ${note}`);
   } catch (error) {
     note = error instanceof Error ? error.message : String(error);
@@ -305,9 +376,11 @@ async function round(): Promise<void> {
       flagsAfter,
       findings,
       changed,
+      branch,
       note,
       durationMs: Date.now() - started,
     });
+    taken.lock.release();
   }
 }
 

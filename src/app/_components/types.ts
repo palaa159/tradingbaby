@@ -119,6 +119,7 @@ export interface PrincipalData {
     zone: string;
     changed: string[];
     checks: { name: string; ok: boolean }[];
+    branch: string;
     note: string;
     durationMs: number;
   }[];

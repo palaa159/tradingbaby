@@ -12,6 +12,7 @@ interface Round {
   hardFlags: string[];
   findings: string[];
   changed: string[];
+  branch: string;
   note: string;
   durationMs: number;
 }
@@ -54,6 +55,9 @@ export default function Page() {
               {r.note ? <p className="text-[11px] text-muted-foreground">{r.note}</p> : null}
             </CardHeader>
             <CardContent className="flex flex-col gap-2 px-3">
+              {r.branch ? (
+                <p className="font-mono text-[11px] text-[var(--ok)]">🌿 {r.branch}</p>
+              ) : null}
               {r.changed.length ? (
                 <div className="flex flex-wrap gap-1">
                   {r.changed.map((f) => (
