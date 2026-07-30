@@ -20,6 +20,8 @@ export interface DesignRound {
   findings: string[];
   /** Files it actually changed, after the zone check. */
   changed: string[];
+  /** The branch the round was committed to. Empty when nothing was kept. */
+  branch: string;
   note: string;
   durationMs: number;
 }
@@ -31,6 +33,7 @@ interface RoundRow {
   hard_flags: string;
   findings: string;
   changed: string;
+  branch: string | null;
   note: string;
   duration_ms: number;
 }
@@ -49,6 +52,21 @@ export function migrateDesignLog(db: Database): void {
     )
   `);
   db.run('CREATE INDEX IF NOT EXISTS design_rounds_at ON design_rounds (at DESC)');
+  addColumn(db, 'design_rounds', 'branch');
+}
+
+/**
+ * Add a column to a table that already exists in the maker's database.
+ *
+ * Spec §9.5: schema changes are additions, never rewrites — an old row keeps
+ * every meaning it had, and simply has nothing to say about the new column.
+ */
+export function addColumn(db: Database, table: string, column: string): void {
+  const present = db
+    .query<{ name: string }, []>(`PRAGMA table_info(${table})`)
+    .all()
+    .some((c) => c.name === column);
+  if (!present) db.run(`ALTER TABLE ${table} ADD COLUMN ${column} TEXT NOT NULL DEFAULT ''`);
 }
 
 export class DesignLog {
@@ -61,14 +79,16 @@ export class DesignLog {
 
   record(round: Omit<DesignRound, 'id'>): void {
     this.db.run(
-      `INSERT INTO design_rounds (at, outcome, hard_flags, findings, changed, note, duration_ms)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO design_rounds
+         (at, outcome, hard_flags, findings, changed, branch, note, duration_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         round.at,
         round.outcome,
         JSON.stringify(round.hardFlags),
         JSON.stringify(round.findings),
         JSON.stringify(round.changed),
+        round.branch,
         round.note,
         round.durationMs,
       ],
@@ -86,6 +106,7 @@ export class DesignLog {
         hardFlags: JSON.parse(r.hard_flags) as string[],
         findings: JSON.parse(r.findings) as string[],
         changed: JSON.parse(r.changed) as string[],
+        branch: r.branch ?? '',
         note: r.note,
         durationMs: r.duration_ms,
       }));

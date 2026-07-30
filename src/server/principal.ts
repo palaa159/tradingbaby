@@ -18,13 +18,13 @@ import { runHealthChecks, worstSeverity, type SchoolVitals } from '../core/princ
 import { nextRequest, type OpenRequest } from '../core/principal/requests.ts';
 import { classifyChange, decideAction, DEFAULT_POLICY } from '../core/principal/zones.ts';
 import { DEFAULT_ACADEMY } from './academyConfig.ts';
-import { changedPaths } from './design/changed.ts';
 import { PrincipalLog } from './db/principalLog.ts';
 import { SdkLog } from './db/sdkLog.ts';
 import { openAcademyDb, SqliteEventStore, StudentStore } from './db/sqliteStore.ts';
 import { StrategyStore } from './db/strategyStore.ts';
 import { WorkLog, type WorkOutcome } from './db/workLog.ts';
 import { tracedQuery } from './engine/sdkTrace.ts';
+import { changedPaths, handOff, revertTree, sh } from './git.ts';
 import { DEFAULT_LOCK_PATH, takeWorkLock } from './workLock.ts';
 
 function arg(name: string): string | undefined {
@@ -56,21 +56,6 @@ const workLog = new WorkLog(db);
 const sdkLog = new SdkLog(db);
 
 const watchMinutes = Number(arg('watch') ?? 0);
-
-const sh = async (cmd: string[]): Promise<{ ok: boolean; out: string }> => {
-  const proc = Bun.spawn(cmd, { cwd: process.cwd(), stdout: 'pipe', stderr: 'pipe' });
-  const [out, err] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-  return { ok: (await proc.exited) === 0, out: (out + err).slice(-4000) };
-};
-
-/** Put the tree back exactly as it was found. */
-async function revert(): Promise<void> {
-  await sh(['git', 'checkout', '--', '.']);
-  await sh(['git', 'clean', '-fd', 'src']);
-}
 
 /** One walk of the school. Returns the worst thing it saw, and the request box. */
 function round(): { overall: 'ok' | 'warn' | 'broken'; open: OpenRequest[] } {
@@ -194,9 +179,10 @@ src/server/engine/prompts.ts, src/server/marketData.ts, ไฟล์ *.test.ts, 
  * with nobody watching. Zone policy decides what may be kept, the three checks
  * decide whether it works, and anything that fails either goes back in full.
  *
- * It does not commit and it does not merge. Auto-merge is off (spec §9.4 lets
- * the maker choose, and the school starts with approval-first), so the honest
- * end state is written code, green checks, and a row the maker can read.
+ * What it keeps is committed to a branch of its own and pushed. It does not
+ * merge and it does not touch `main` — auto-merge is off (spec §9.4 lets the
+ * maker choose, and the school starts with approval-first), so the end state is
+ * a branch, green checks, and a row saying who asked and what came of it.
  */
 async function work(open: OpenRequest[]): Promise<void> {
   const request = nextRequest(open, workLog.attemptedRequestIds());
@@ -213,6 +199,7 @@ async function work(open: OpenRequest[]): Promise<void> {
   let zone = '';
   let changed: string[] = [];
   const checks: { name: string; ok: boolean }[] = [];
+  let branch = '';
   let note = '';
 
   try {
@@ -265,7 +252,7 @@ async function work(open: OpenRequest[]): Promise<void> {
     const verdict = classifyChange(changed);
     zone = verdict.zone;
     if (verdict.zone !== 'green') {
-      await revert();
+      await revertTree();
       outcome = 'reverted';
       note = `แตะนอกโซนเขียว — ${verdict.reason}\n\n${note}`;
       console.log(`↩️  ${note.split('\n')[0] ?? ''}`);
@@ -280,7 +267,7 @@ async function work(open: OpenRequest[]): Promise<void> {
       const res = await sh([...cmd]);
       checks.push({ name, ok: res.ok });
       if (!res.ok) {
-        await revert();
+        await revertTree();
         outcome = 'reverted';
         note = `${name} พัง — ย้อนกลับทั้งรอบ\n${res.out.slice(-800)}\n\n${note}`;
         console.log(`↩️  ${name} พัง — ย้อนกลับทั้งรอบ`);
@@ -288,8 +275,33 @@ async function work(open: OpenRequest[]): Promise<void> {
       }
     }
 
+    const handed = await handOff({
+      prefix: 'principal',
+      subject: `ครูใหญ่: ${request.title.slice(0, 60)}`,
+      body: [
+        `คำร้องของ${request.studentName} (${request.studentId})`,
+        request.body,
+        note,
+        'เขียนโดย alpha-principal แบบไม่มีคนเฝ้า โซนเขียวเท่านั้น',
+        'typecheck, test และ build ผ่านครบก่อน commit — ยังไม่ merge',
+      ]
+        .filter(Boolean)
+        .join('\n\n'),
+      paths: changed,
+      at: started,
+    });
+
+    if (!handed.ok) {
+      outcome = 'reverted';
+      note = `ส่งมอบงานไม่สำเร็จ — ${handed.error}\n\n${note}`;
+      console.log(`↩️  ${note.split('\n')[0] ?? ''}`);
+      return;
+    }
+
+    branch = handed.branch;
     outcome = 'written';
-    console.log(`✍️  เขียนแล้ว ${changed.length} ไฟล์ ผ่านครบสามด่าน — รอคนสร้างตรวจ`);
+    note = `${handed.note}\n\n${note}`;
+    console.log(`✍️  เขียนแล้ว ${changed.length} ไฟล์ ผ่านครบสามด่าน — ${handed.note}`);
     console.log(`    ${changed.join(', ')}`);
   } catch (error) {
     note = error instanceof Error ? error.message : String(error);
@@ -305,6 +317,7 @@ async function work(open: OpenRequest[]): Promise<void> {
       zone,
       changed,
       checks,
+      branch,
       note,
       durationMs: Date.now() - started,
     });

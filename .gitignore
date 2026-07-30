@@ -6,3 +6,6 @@ dist/
 *.db-wal
 .next/
 next-env.d.ts
+# Worktrees for background sessions. Untracked here, they would read as a dirty
+# tree and make the Designer and the Principal skip every round.
+.claude/worktrees/
